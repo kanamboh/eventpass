@@ -1,0 +1,142 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    font-family: 'Maven Pro', Inter, sans-serif;
+  }
+  
+  body {
+    background-color: #f8fafc;
+    color: #334155;
+    overflow-x: hidden;
+  }
+
+  ::selection {
+    background-color: #7fbd52;
+    color: #ffffff;
+  }
+}
+
+/* WebTickets Custom Topographic Background */
+.bg-topographic {
+  background-color: #1a2b49;
+  background-image: 
+    radial-gradient(ellipse at 80% 20%, rgba(127, 189, 82, 0.18) 0%, transparent 50%),
+    radial-gradient(ellipse at 10% 80%, rgba(56, 189, 248, 0.12) 0%, transparent 40%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='300' viewBox='0 0 600 300'%3E%3Cpath d='M0 120 C 150 160 250 80 400 130 C 500 160 550 110 600 140' fill='none' stroke='rgba(255,255,255,0.12)' stroke-width='1.5'/%3E%3Cpath d='M0 150 C 120 190 280 110 420 160 C 510 190 560 140 600 170' fill='none' stroke='rgba(255,255,255,0.10)' stroke-width='1.5'/%3E%3Cpath d='M0 90 C 180 130 220 50 380 100 C 490 130 540 80 600 110' fill='none' stroke='rgba(255,255,255,0.13)' stroke-width='1.5'/%3E%3Cpath d='M0 60 C 140 100 240 20 360 70 C 470 100 520 50 600 80' fill='none' stroke='rgba(255,255,255,0.08)' stroke-width='1.5'/%3E%3Cpath d='M0 180 C 160 220 260 140 440 190 C 530 220 570 170 600 200' fill='none' stroke='rgba(255,255,255,0.10)' stroke-width='1.5'/%3E%3Cpath d='M0 210 C 130 250 290 170 460 220 C 540 250 580 200 600 230' fill='none' stroke='rgba(255,255,255,0.08)' stroke-width='1.5'/%3E%3Cpath d='M0 240 C 150 280 310 200 480 250 C 550 280 590 230 600 260' fill='none' stroke='rgba(255,255,255,0.07)' stroke-width='1.5'/%3E%3C/svg%3E");
+  background-size: cover, cover, 600px 300px;
+}
+
+.bg-topographic-light {
+  background-color: #ffffff;
+  background-image: 
+    radial-gradient(ellipse at 85% 15%, rgba(127, 189, 82, 0.08) 0%, transparent 60%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='300' viewBox='0 0 600 300'%3E%3Cpath d='M0 120 C 150 160 250 80 400 130 C 500 160 550 110 600 140' fill='none' stroke='rgba(127,189,82,0.07)' stroke-width='1.5'/%3E%3Cpath d='M0 150 C 120 190 280 110 420 160 C 510 190 560 140 600 170' fill='none' stroke='rgba(127,189,82,0.05)' stroke-width='1.5'/%3E%3Cpath d='M0 90 C 180 130 220 50 380 100 C 490 130 540 80 600 110' fill='none' stroke='rgba(127,189,82,0.06)' stroke-width='1.5'/%3E%3Cpath d='M0 180 C 160 220 260 140 440 190 C 530 220 570 170 600 200' fill='none' stroke='rgba(127,189,82,0.04)' stroke-width='1.5'/%3E%3C/svg%3E");
+  background-size: cover, 600px 300px;
+}
+
+/* Custom WebTickets Button Styles */
+.btn-webticket-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 42px;
+  padding: 0 24px;
+  border-radius: 9999px;
+  background-color: #7fbd52;
+  color: #ffffff;
+  font-family: 'Maven Pro', sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 6px rgba(127, 189, 82, 0.35);
+  border: 1px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn-webticket-primary:hover {
+  background-color: #6fa844;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 14px rgba(127, 189, 82, 0.4);
+}
+
+.btn-webticket-primary:active {
+  transform: translateY(0);
+  background-color: #598c34;
+}
+
+.btn-webticket-outline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 42px;
+  padding: 0 22px;
+  border-radius: 9999px;
+  background-color: transparent;
+  border: 1.5px solid #7fbd52;
+  color: #598c34;
+  font-family: 'Maven Pro', sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  transition: all 0.25s ease;
+  cursor: pointer;
+}
+
+.btn-webticket-outline:hover {
+  background-color: #7fbd52;
+  color: #ffffff;
+  box-shadow: 0 4px 10px rgba(127, 189, 82, 0.3);
+}
+
+.btn-webticket-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 42px;
+  padding: 0 22px;
+  border-radius: 9999px;
+  background-color: #1e293b;
+  color: #ffffff;
+  font-family: 'Maven Pro', sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  transition: all 0.25s ease;
+}
+
+.btn-webticket-secondary:hover {
+  background-color: #0f172a;
+  transform: translateY(-1px);
+}
+
+/* Category card tile with overlay */
+.category-tile-card {
+  position: relative;
+  height: 220px;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.category-tile-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.15);
+}
+
+.category-tile-card img {
+  transition: transform 0.4s ease;
+}
+
+.category-tile-card:hover img {
+  transform: scale(1.08);
+}

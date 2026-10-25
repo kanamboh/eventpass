@@ -1,0 +1,443 @@
+// EventPass Database Schema
+// PostgreSQL via Prisma ORM
+// Strictly enforces integer minor units for monetary amounts, UUID primary keys, and relations
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ----------------------------------------------------
+// ENUMS
+// ----------------------------------------------------
+
+enum Role {
+  CUSTOMER
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum EventStatus {
+  DRAFT
+  PUBLISHED
+  CANCELLED
+  COMPLETED
+}
+
+enum TicketTypeStatus {
+  ACTIVE
+  INACTIVE
+  SOLD_OUT
+}
+
+enum ReservationStatus {
+  ACTIVE
+  EXPIRED
+  CONVERTED
+  CANCELLED
+}
+
+enum AuthTokenPurpose {
+  EMAIL_VERIFICATION
+  PASSWORD_RESET
+}
+
+enum OrderStatus {
+  PENDING
+  PAYMENT_PROCESSING
+  PAID
+  PAYMENT_SUCCESS_INVENTORY_RECONCILIATION_REQUIRED
+  FAILED
+  CANCELLED
+  EXPIRED
+  REFUNDED
+}
+
+enum PaymentStatus {
+  INITIATED
+  PENDING
+  PROCESSING
+  SUCCESS
+  FAILED
+  ABANDONED
+  REVERSED
+}
+
+enum TicketStatus {
+  VALID
+  CHECKED_IN
+  CANCELLED
+  REFUNDED
+}
+
+enum DiscountType {
+  PERCENTAGE
+  FIXED
+}
+
+// ----------------------------------------------------
+// MODELS
+// ----------------------------------------------------
+
+model User {
+  id            String    @id @default(uuid()) @db.Uuid
+  email         String    @unique
+  passwordHash  String
+  fullName      String
+  phone         String?
+  city          String?
+  role          Role      @default(CUSTOMER)
+  emailVerified Boolean   @default(false)
+  isArchived    Boolean   @default(false)
+  archivedAt    DateTime? @db.Timestamptz(6)
+  createdAt     DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime  @updatedAt @db.Timestamptz(6)
+  lastLoginAt   DateTime? @db.Timestamptz(6)
+
+  authTokens   AuthToken[]
+  orders       Order[]
+  reservations Reservation[]
+  tickets      Ticket[]
+  createdPromoCodes PromoCode[] @relation("AdminCreatedPromoCodes")
+  promoRedemptions  PromoCodeRedemption[]
+
+  @@index([isArchived, role])
+  @@map("users")
+}
+
+model AuthToken {
+  id        String           @id @default(uuid()) @db.Uuid
+  userId    String           @db.Uuid
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String
+  purpose   AuthTokenPurpose
+  expiresAt DateTime         @db.Timestamptz(6)
+  usedAt    DateTime?        @db.Timestamptz(6)
+  createdAt DateTime         @default(now()) @db.Timestamptz(6)
+
+  @@index([userId])
+  @@index([tokenHash])
+  @@index([purpose, expiresAt])
+  @@map("auth_tokens")
+}
+
+model Category {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String   @unique
+  slug        String   @unique
+  description String?
+  icon        String?
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(6)
+
+  events Event[]
+
+  @@map("categories")
+}
+
+model Event {
+  id                String    @id @default(uuid()) @db.Uuid
+  slug              String    @unique
+  title             String
+  subtitle          String?
+  description       String    @db.Text
+  categoryId        String    @db.Uuid
+  category          Category  @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  venue             String
+  location          String
+  province          String?
+  startDateTime     DateTime  @db.Timestamptz(6)
+  endDateTime       DateTime? @db.Timestamptz(6)
+  imageUrl          String
+  bannerUrl         String?
+  organizerName     String
+  organizerVerified Boolean   @default(false)
+  ageRestriction    String?
+  isFeatured        Boolean     @default(false)
+  isActive          Boolean     @default(true)
+  status            EventStatus @default(PUBLISHED)
+  createdAt         DateTime    @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime    @updatedAt @db.Timestamptz(6)
+
+  ticketTypes TicketType[]
+  orderItems  OrderItem[]
+  tickets     Ticket[]
+  promoCodeEvents PromoCodeEvent[]
+
+  @@index([slug])
+  @@index([categoryId])
+  @@index([status])
+  @@index([startDateTime])
+  @@index([location])
+  @@index([province])
+  @@index([status, isFeatured])
+  @@index([isActive, isFeatured])
+  @@map("events")
+}
+
+model TicketType {
+  id                   String           @id @default(uuid()) @db.Uuid
+  eventId              String           @db.Uuid
+  event                Event            @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  name                 String
+  description          String?
+  priceMinor           Int
+  paymentPriceUsdMinor Int              @default(0)
+  currency             String           @default("ZAR")
+  quantityTotal        Int
+  quantitySold         Int              @default(0)
+  quantityReserved     Int              @default(0)
+  quantityAvailable    Int              @default(0)
+  status               TicketTypeStatus @default(ACTIVE)
+  maxPerOrder          Int              @default(10)
+  isActive             Boolean          @default(true)
+  createdAt            DateTime         @default(now()) @db.Timestamptz(6)
+  updatedAt            DateTime         @updatedAt @db.Timestamptz(6)
+
+  reservations Reservation[]
+  orderItems   OrderItem[]
+  tickets      Ticket[]
+  promoCodeTicketTypes PromoCodeTicketType[]
+
+  @@index([eventId])
+  @@index([status])
+  @@map("ticket_types")
+}
+
+model Reservation {
+  id           String            @id @default(uuid()) @db.Uuid
+  userId       String?           @db.Uuid
+  user         User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
+  sessionId    String
+  ticketTypeId String            @db.Uuid
+  ticketType   TicketType        @relation(fields: [ticketTypeId], references: [id], onDelete: Cascade)
+  quantity     Int
+  orderId      String?           @db.Uuid
+  order        Order?            @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  status       ReservationStatus @default(ACTIVE)
+  expiresAt    DateTime          @db.Timestamptz(6)
+  createdAt    DateTime          @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime          @default(now()) @updatedAt @db.Timestamptz(6)
+
+  @@index([sessionId])
+  @@index([userId, status])
+  @@index([ticketTypeId, status, expiresAt])
+  @@index([expiresAt])
+  @@index([orderId])
+  @@map("reservations")
+}
+
+model Order {
+  id                        String      @id @default(uuid()) @db.Uuid
+  orderReference            String      @unique
+  userId                    String?     @db.Uuid
+  user                      User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  buyerName                 String
+  buyerEmail                String
+  buyerPhone                String?
+  subtotalMinor             Int
+  serviceFeeMinor           Int         @default(0)
+  discountMinor             Int         @default(0)
+  totalMinor                Int
+  currency                  String      @default("ZAR")
+  paymentSubtotalUsdMinor   Int         @default(0)
+  paymentServiceFeeUsdMinor Int         @default(0)
+  paymentTotalUsdMinor      Int         @default(0)
+  paymentCurrency           String      @default("USD")
+  status                    OrderStatus @default(PENDING)
+  paymentProvider           String      @default("PAYSTACK")
+  paymentReference          String?
+  idempotencyKey            String?     @db.VarChar(100)
+  promoCodeId               String?     @db.Uuid
+  promoCode                 PromoCode?  @relation(fields: [promoCodeId], references: [id], onDelete: SetNull)
+  paidAt                    DateTime?   @db.Timestamptz(6)
+  expiresAt                 DateTime?   @db.Timestamptz(6)
+  createdAt                 DateTime    @default(now()) @db.Timestamptz(6)
+  updatedAt                 DateTime    @updatedAt @db.Timestamptz(6)
+
+  orderItems   OrderItem[]
+  payments     Payment[]
+  tickets      Ticket[]
+  reservations Reservation[]
+  redemptions  PromoCodeRedemption[]
+
+  @@unique([userId, idempotencyKey])
+  @@index([orderReference])
+  @@index([userId])
+  @@index([buyerEmail])
+  @@index([promoCodeId])
+  @@index([status])
+  @@map("orders")
+}
+
+model OrderItem {
+  id                String     @id @default(uuid()) @db.Uuid
+  orderId           String     @db.Uuid
+  order             Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  ticketTypeId      String     @db.Uuid
+  ticketType        TicketType @relation(fields: [ticketTypeId], references: [id], onDelete: Restrict)
+  eventId           String     @db.Uuid
+  event             Event      @relation(fields: [eventId], references: [id], onDelete: Restrict)
+  quantity          Int
+  unitPriceMinor    Int
+  totalMinor        Int
+  unitPriceUsdMinor Int        @default(0)
+  totalUsdMinor     Int        @default(0)
+  createdAt         DateTime   @default(now()) @db.Timestamptz(6)
+
+  tickets Ticket[]
+
+  @@index([orderId])
+  @@index([ticketTypeId])
+  @@index([eventId])
+  @@map("order_items")
+}
+
+model Payment {
+  id                    String        @id @default(uuid()) @db.Uuid
+  orderId               String        @db.Uuid
+  order                 Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  provider              String        @default("PAYSTACK")
+  providerReference     String?       @unique
+  amountMinor           Int
+  currency              String        @default("USD")
+  settlementAmountMinor Int?
+  settlementCurrency    String?
+  fxRate                Decimal?      @db.Decimal(10, 4)
+  status                PaymentStatus @default(INITIATED)
+  providerResponse      Json?
+  failureReason         String?
+  paidAt                DateTime?     @db.Timestamptz(6)
+  createdAt             DateTime      @default(now()) @db.Timestamptz(6)
+  updatedAt             DateTime      @updatedAt @db.Timestamptz(6)
+
+  @@index([orderId])
+  @@index([providerReference])
+  @@index([status])
+  @@map("payments")
+}
+
+model Ticket {
+  id              String       @id @default(uuid()) @db.Uuid
+  orderId         String       @db.Uuid
+  order           Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderItemId     String       @db.Uuid
+  orderItem       OrderItem    @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  eventId         String       @db.Uuid
+  event           Event        @relation(fields: [eventId], references: [id], onDelete: Restrict)
+  ticketTypeId    String       @db.Uuid
+  ticketType      TicketType   @relation(fields: [ticketTypeId], references: [id], onDelete: Restrict)
+  userId          String?      @db.Uuid
+  user            User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  ticketReference String       @unique
+  qrTokenHash     String
+  status          TicketStatus @default(VALID)
+  checkedInAt     DateTime?    @db.Timestamptz(6)
+  checkedInBy     String?
+  createdAt       DateTime     @default(now()) @db.Timestamptz(6)
+
+  @@index([orderId])
+  @@index([ticketReference])
+  @@index([eventId])
+  @@index([userId])
+  @@index([status])
+  @@map("tickets")
+}
+
+model WebhookEvent {
+  id              String    @id @default(uuid()) @db.Uuid
+  provider        String    @default("PAYSTACK")
+  providerEventId String    @unique
+  eventType       String
+  payload         Json
+  processedAt     DateTime? @db.Timestamptz(6)
+  createdAt       DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@index([provider, providerEventId])
+  @@map("webhook_events")
+}
+
+model Session {
+  sid    String   @id @db.VarChar(255)
+  sess   Json
+  expire DateTime @db.Timestamptz(6)
+
+  @@index([expire])
+  @@map("session")
+}
+
+model PromoCode {
+  id                   String        @id @default(uuid()) @db.Uuid
+  code                 String        @unique @db.VarChar(50)
+  description          String?       @db.VarChar(255)
+  discountType         DiscountType  @default(PERCENTAGE)
+  discountValue        Int           // For PERCENTAGE: 1-100 (e.g. 20 for 20%). For FIXED: integer minor units in ZAR cents (e.g. 20000 for R200.00)
+  maxDiscountMinor     Int?          // Optional cap on discount amount in cents for percentage discounts
+  minSubtotalMinor     Int           @default(0) // Minimum eligible subtotal required in cents
+  maxTotalRedemptions  Int?          // Total redemptions cap across all users (null = unlimited)
+  maxPerCustomer       Int?          // Max redemptions allowed per customer (null = unlimited)
+  currentRedemptions   Int           @default(0) // Counter of committed redemptions
+  isActive             Boolean       @default(true)
+  startsAt             DateTime?     @db.Timestamptz(6)
+  expiresAt            DateTime?     @db.Timestamptz(6)
+  createdById          String?       @db.Uuid
+  createdBy            User?         @relation("AdminCreatedPromoCodes", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt            DateTime      @default(now()) @db.Timestamptz(6)
+  updatedAt            DateTime      @updatedAt @db.Timestamptz(6)
+
+  events      PromoCodeEvent[]
+  ticketTypes PromoCodeTicketType[]
+  redemptions PromoCodeRedemption[]
+  orders      Order[]
+
+  @@index([code])
+  @@index([isActive, expiresAt])
+  @@map("promo_codes")
+}
+
+model PromoCodeEvent {
+  promoCodeId String    @db.Uuid
+  promoCode   PromoCode @relation(fields: [promoCodeId], references: [id], onDelete: Cascade)
+  eventId     String    @db.Uuid
+  event       Event     @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@id([promoCodeId, eventId])
+  @@index([eventId])
+  @@map("promo_code_events")
+}
+
+model PromoCodeTicketType {
+  promoCodeId  String     @db.Uuid
+  promoCode    PromoCode  @relation(fields: [promoCodeId], references: [id], onDelete: Cascade)
+  ticketTypeId String     @db.Uuid
+  ticketType   TicketType @relation(fields: [ticketTypeId], references: [id], onDelete: Cascade)
+
+  @@id([promoCodeId, ticketTypeId])
+  @@index([ticketTypeId])
+  @@map("promo_code_ticket_types")
+}
+
+model PromoCodeRedemption {
+  id                  String     @id @default(uuid()) @db.Uuid
+  promoCodeId         String     @db.Uuid
+  promoCode           PromoCode  @relation(fields: [promoCodeId], references: [id], onDelete: Cascade)
+  orderId             String?    @db.Uuid
+  order               Order?     @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  userId              String?    @db.Uuid
+  user                User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+  customerEmail       String?
+  discountAmountMinor Int
+  createdAt           DateTime   @default(now()) @db.Timestamptz(6)
+
+  @@unique([promoCodeId, orderId])
+  @@index([promoCodeId])
+  @@index([userId])
+  @@index([customerEmail])
+  @@index([orderId])
+  @@map("promo_code_redemptions")
+}

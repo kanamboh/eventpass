@@ -1,0 +1,51 @@
+# Dependencies
+node_modules
+server/node_modules
+
+# Production builds
+dist
+dist-ssr
+*.local
+
+# Environment variables & secrets
+.env
+.env.*
+!.env.example
+server/.env
+server/.env.*
+!server/.env.example
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+*.log
+
+# Editor & OS files
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+.idea
+.neon
+
+# Database backups & SQL dumps
+*.sql
+server/backups/
+backups/
+
+# Local audit & scratch scripts
+scratch_*.js
+server/scratch_*.js
+server/audit_order.js
+server/execute_safe_accounts_cleanup.js
+server/execute_safe_events_cleanup.js
+take_screenshots.js
+test_frontend_auth_visual.js
+inspect_site.ps1
+run_npm.bat
+
+# Temporary UI screenshots
+screenshot-*.png

@@ -1,0 +1,39 @@
+{
+  "name": "eventpass-ticketing",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": [
+    "server"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build && npm --prefix server run prisma:generate",
+    "preview": "vite preview",
+    "server": "npm --prefix server start",
+    "server:dev": "npm --prefix server run dev",
+    "server:migrate": "npm --prefix server run db:migrate",
+    "server:seed": "npm --prefix server run db:seed",
+    "test:server": "npm --prefix server test"
+  },
+  "dependencies": {
+    "@neon/config": "^1.9.4",
+    "@neon/env": "^1.6.5",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.453.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.27.0",
+    "tailwind-merge": "^2.5.4"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.11",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.3",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.47",
+    "puppeteer-core": "^24.43.1",
+    "tailwindcss": "^3.4.14",
+    "vite": "^5.4.9"
+  }
+}
