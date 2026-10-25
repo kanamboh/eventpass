@@ -49,3 +49,6 @@ run_npm.bat
 
 # Temporary UI screenshots
 screenshot-*.png
+
+.vercel
+!.env.example
