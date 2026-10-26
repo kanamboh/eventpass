@@ -124,3 +124,106 @@ export function validateImageBuffer(buffer, originalname = '', declaredMimeType 
     publicId
   };
 }
+
+/**
+ * Validates whether an image URL qualifies an event for public display or publication.
+ * A customer must NEVER see an event without a valid, genuine image.
+ *
+ * Rules:
+ * - Absent, null, undefined, or empty string is INVALID.
+ * - Non-http(s) schemes (such as data: URIs or blob:) are INVALID placeholders.
+ * - Explicit placeholder strings or 'photo pending' references are INVALID.
+ * - Must be a valid HTTP or HTTPS URL.
+ * - Must be a Cloudinary URL, known image CDN, or end with an authentic image extension.
+ *
+ * @param {string} url - Image URL candidate
+ * @returns {boolean}
+ */
+export function isEventImageValid(url) {
+  if (!url || typeof url !== 'string') {
+    return false;
+  }
+
+  const trimmed = url.trim();
+  if (trimmed.length < 10) {
+    return false;
+  }
+
+  // Reject data URIs, placeholders, and dummy text
+  const lower = trimmed.toLowerCase();
+  if (lower.startsWith('data:') || lower.startsWith('blob:') || lower.startsWith('javascript:')) {
+    return false;
+  }
+
+  if (
+    lower.includes('placeholder') ||
+    lower.includes('event photo pending') ||
+    lower.includes('no-image') ||
+    lower.includes('dummyimage') ||
+    lower.includes('via.placeholder')
+  ) {
+    return false;
+  }
+
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return false;
+    }
+
+    // Cloudinary assets (res.cloudinary.com or api.cloudinary.com)
+    if (parsed.hostname.includes('cloudinary.com')) {
+      // Must contain image path beyond root
+      return parsed.pathname.length > 5;
+    }
+
+    // Supported image CDN hostnames (e.g. Unsplash)
+    if (parsed.hostname.includes('unsplash.com')) {
+      return true;
+    }
+
+    // Standard image file extensions
+    const hasImageExt = /\.(jpe?g|png|webp|avif|gif|svg)($|\?)/i.test(parsed.pathname);
+    return hasImageExt;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Safely extracts Cloudinary publicId from a URL or raw publicId.
+ * Used for safe deletion of Cloudinary assets without risking other assets.
+ *
+ * @param {string} urlOrPublicId
+ * @returns {string | null} - e.g. "event_posters/uuid" or null if not a Cloudinary asset
+ */
+export function extractCloudinaryPublicId(urlOrPublicId) {
+  if (!urlOrPublicId || typeof urlOrPublicId !== 'string') {
+    return null;
+  }
+
+  const trimmed = urlOrPublicId.trim();
+
+  // If already a raw publicId e.g. "event_posters/xyz"
+  if (/^event_posters\/[a-zA-Z0-9_\-\.]+$/.test(trimmed)) {
+    return trimmed.replace(/\.[a-zA-Z0-9]+$/, '');
+  }
+
+  try {
+    const parsed = new URL(trimmed);
+    if (!parsed.hostname.includes('cloudinary.com')) {
+      return null;
+    }
+
+    // Cloudinary URLs typically match: .../image/upload/(v12345/)?(folder/publicId)(.ext)?
+    const match = parsed.pathname.match(/\/image\/upload\/(?:v\d+\/)?([a-zA-Z0-9_\-\/]+?)(?:\.[a-zA-Z0-9]+)?$/);
+    if (match && match[1]) {
+      return match[1];
+    }
+  } catch {
+    // Not a URL
+  }
+
+  return null;
+}
+

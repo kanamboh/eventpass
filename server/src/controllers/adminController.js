@@ -125,6 +125,26 @@ export const updateEventStatus = async (req, res, next) => {
 };
 
 /**
+ * DELETE /api/admin/events/:id
+ */
+export const deleteEvent = async (req, res, next) => {
+  try {
+    const result = await adminService.deleteAdminEvent({
+      adminUserId: req.user.id,
+      eventId: req.params.id
+    });
+    res.json({
+      success: true,
+      message: result.message || 'Event permanently deleted successfully.',
+      data: result
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+
+/**
  * POST /api/admin/events/:id/ticket-types
  */
 export const createTicketType = async (req, res, next) => {

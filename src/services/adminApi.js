@@ -123,7 +123,29 @@ export async function updateAdminEventStatus(eventId, status) {
   return body.data.event;
 }
 
+export async function deleteAdminEvent(eventId) {
+  if (!eventId) throw new Error('Event ID is required.');
+
+  const res = await fetch(`/api/admin/events/${encodeURIComponent(eventId)}`, {
+    method: 'DELETE',
+    headers: { Accept: 'application/json' },
+    credentials: 'include'
+  });
+
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const error = new Error(body?.message || 'Failed to permanently delete event.');
+    error.status = res.status;
+    error.code = body?.code || 'DELETE_EVENT_ERROR';
+    error.details = body?.details;
+    throw error;
+  }
+
+  return body.data;
+}
+
 export async function createAdminTicketType(eventId, payload) {
+
   if (!eventId) throw new Error('Event ID is required.');
 
   const res = await fetch(`/api/admin/events/${encodeURIComponent(eventId)}/ticket-types`, {

@@ -63,7 +63,8 @@ export const adminCreateEventSchema = z.object({
   ageRestriction: z.string().trim().max(50).optional(),
   isFeatured: z.boolean().optional().default(false),
   status: z.enum(['DRAFT', 'PUBLISHED']).optional().default('DRAFT'),
-  ticketTypes: z.array(adminCreateTicketTypeNestedSchema).optional()
+  ticketTypes: z.array(adminCreateTicketTypeNestedSchema).optional(),
+  allowDuplicateOverride: z.boolean().optional().default(false)
 }).strict({
   message: 'Unexpected parameters rejected by strict schema validation.'
 });
@@ -83,10 +84,12 @@ export const adminUpdateEventSchema = z.object({
   organizerName: z.string().trim().min(2).max(100).optional(),
   ageRestriction: z.string().trim().max(50).optional().nullable(),
   isFeatured: z.boolean().optional(),
-  status: z.enum(['DRAFT', 'PUBLISHED', 'CANCELLED', 'COMPLETED']).optional()
+  status: z.enum(['DRAFT', 'PUBLISHED', 'CANCELLED', 'COMPLETED']).optional(),
+  allowDuplicateOverride: z.boolean().optional().default(false)
 }).strict({
   message: 'Unexpected parameters rejected by strict schema validation.'
 });
+
 
 export const adminUpdateEventStatusSchema = z.object({
   status: z.enum(['DRAFT', 'PUBLISHED', 'CANCELLED', 'COMPLETED'], {

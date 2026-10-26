@@ -49,8 +49,10 @@ const envSchema = z.object({
   STORAGE_PROVIDER: z.enum(['CLOUDINARY', 'MOCK']).default('CLOUDINARY'),
   CLOUDINARY_CLOUD_NAME: z.string().optional(),
   CLOUDINARY_API_KEY: z.string().optional(),
-  CLOUDINARY_API_SECRET: z.string().optional()
+  CLOUDINARY_API_SECRET: z.string().optional(),
+  CRON_SECRET: z.string().optional()
 }).refine((data) => {
+
   // Safety guard: Strictly forbid live keys in development or test environments
   if (data.NODE_ENV !== 'production' && data.PAYSTACK_SECRET_KEY && data.PAYSTACK_SECRET_KEY.startsWith('sk_live_')) {
     return false;

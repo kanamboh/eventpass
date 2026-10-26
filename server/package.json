@@ -9,6 +9,7 @@
     "dev": "node --watch server.js",
     "test": "node test_promo_codes_verification.js",
     "test:promo": "node test_promo_codes_verification.js",
+    "test:events": "node test_event_management_enhancements.js",
     "test:freeze": "node test_payment_freeze_verification.js",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",

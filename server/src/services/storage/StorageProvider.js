@@ -17,4 +17,15 @@ export class StorageProvider {
   async uploadImage(params) {
     throw new Error('uploadImage must be implemented by subclass.');
   }
+
+  /**
+   * Permanently delete an image asset from storage.
+   *
+   * @param {string} publicId - Storage asset identifier
+   * @returns {Promise<{ result: string }>}
+   */
+  async deleteImage(publicId) {
+    throw new Error('deleteImage must be implemented by subclass.');
+  }
 }
+

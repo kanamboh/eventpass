@@ -33,6 +33,9 @@ const AdminEventCreatePage = () => {
   const [loadingCategories, setLoadingCategories] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
+  const [duplicateWarning, setDuplicateWarning] = useState(null);
+  const [allowOverride, setAllowOverride] = useState(false);
+
 
   // Event form state matching backend schema
   const [form, setForm] = useState({
@@ -161,7 +164,8 @@ const AdminEventCreatePage = () => {
       bannerUrl: form.bannerUrl.trim() || undefined,
       organizerName: form.organizerName.trim(),
       ageRestriction: form.ageRestriction.trim() || undefined,
-      status: 'DRAFT'
+      status: 'DRAFT',
+      allowDuplicateOverride: Boolean(allowOverride)
     };
 
     if (hasInitialTier && tierForm.name.trim()) {
@@ -197,18 +201,27 @@ const AdminEventCreatePage = () => {
       // Navigate to event edit page to allow further tier setup or publishing
       navigate(`/admin/events/${newEvent.id}/edit`);
     } catch (err) {
-      if (err.details && Array.isArray(err.details)) {
+      if (err.code === 'DUPLICATE_EVENT_DETECTED') {
+        setDuplicateWarning({
+          message: err.message,
+          details: err.details
+        });
+        setError(null);
+      } else if (err.details && Array.isArray(err.details)) {
+        setDuplicateWarning(null);
         const detailMsg = err.details
           .map((d) => (d.field ? `${d.field}: ${d.message}` : d.message))
           .join(' | ');
         setError(detailMsg || err.message);
       } else {
+        setDuplicateWarning(null);
         setError(err.message || 'Failed to create event.');
       }
     } finally {
       setSubmitting(false);
     }
   };
+
 
   return (
     <div className="min-h-screen bg-slate-50 py-8 px-4 sm:px-6 lg:px-8">
@@ -238,6 +251,70 @@ const AdminEventCreatePage = () => {
             </p>
           </div>
 
+          {/* Duplicate Event Warning Callout */}
+          {duplicateWarning && (
+            <div className="mb-6 p-4 bg-amber-50 border border-amber-300 rounded-lg text-sm text-amber-900 space-y-3">
+              <div className="flex items-start gap-2.5">
+                <AlertCircle className="w-5 h-5 flex-shrink-0 text-amber-700 mt-0.5" />
+                <div className="space-y-1">
+                  <div className="font-bold text-amber-950">Potential Duplicate Event Detected</div>
+                  <p className="text-xs text-amber-800 leading-relaxed">{duplicateWarning.message}</p>
+                  {duplicateWarning.details?.duplicateEvent && (
+                    <div className="mt-2 p-2 bg-white/70 border border-amber-200 rounded text-xs font-mono text-slate-700 space-y-0.5">
+                      <div><strong>Existing Event:</strong> {duplicateWarning.details.duplicateEvent.title}</div>
+                      <div><strong>Date:</strong> {new Date(duplicateWarning.details.duplicateEvent.startDateTime).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' })}</div>
+                      <div><strong>Venue:</strong> {duplicateWarning.details.duplicateEvent.venue}</div>
+                      <div><strong>Status:</strong> {duplicateWarning.details.duplicateEvent.status}</div>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="pt-2 border-t border-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <p className="text-xs text-amber-800">
+                  If this is a legitimate recurring event or a distinct event sharing a similar title, you may explicitly approve the duplicate.
+                </p>
+                <button
+                  type="button"
+                  onClick={async (e) => {
+                    setAllowOverride(true);
+                    // trigger submission with allowDuplicateOverride = true
+                    const startDate = new Date(form.startDateTime);
+                    const endDate = form.endDateTime ? new Date(form.endDateTime) : null;
+                    const overridePayload = {
+                      title: form.title.trim(),
+                      subtitle: form.subtitle.trim() || undefined,
+                      description: form.description.trim(),
+                      categoryId: form.categoryId,
+                      venue: form.venue.trim(),
+                      location: form.location.trim(),
+                      province: form.province.trim() || undefined,
+                      startDateTime: startDate.toISOString(),
+                      endDateTime: endDate ? endDate.toISOString() : undefined,
+                      imageUrl: form.imageUrl.trim(),
+                      bannerUrl: form.bannerUrl.trim() || undefined,
+                      organizerName: form.organizerName.trim(),
+                      ageRestriction: form.ageRestriction.trim() || undefined,
+                      status: 'DRAFT',
+                      allowDuplicateOverride: true
+                    };
+                    setSubmitting(true);
+                    try {
+                      const newEvent = await createAdminEvent(overridePayload);
+                      navigate(`/admin/events/${newEvent.id}/edit`);
+                    } catch (err) {
+                      setError(err.message || 'Failed to create event.');
+                    } finally {
+                      setSubmitting(false);
+                    }
+                  }}
+                  className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold rounded shadow-sm whitespace-nowrap transition-colors"
+                >
+                  Approve Duplicate & Proceed
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Error Message */}
           {error && (
             <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 flex items-center gap-3">
@@ -245,6 +322,7 @@ const AdminEventCreatePage = () => {
               <span>{error}</span>
             </div>
           )}
+
 
           <form onSubmit={handleSubmit} className="space-y-6">
             

@@ -29,8 +29,10 @@ router.post('/events/upload-poster', uploadPosterMiddleware, adminController.upl
 router.get('/events/:id', adminController.getEvent);
 router.put('/events/:id', adminController.updateEvent);
 router.patch('/events/:id/status', adminController.updateEventStatus);
+router.delete('/events/:id', adminController.deleteEvent);
 
 // Ticket Tier Management
+
 router.post('/events/:id/ticket-types', adminController.createTicketType);
 router.put('/events/:id/ticket-types/:ticketTypeId', adminController.updateTicketType);
 router.delete('/events/:id/ticket-types/:ticketTypeId', adminController.deleteTicketType);

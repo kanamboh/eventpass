@@ -40,3 +40,35 @@ export const handleImageError = (e) => {
     e.currentTarget.src = FALLBACK_EVENT_IMAGE;
   }
 };
+
+/**
+ * Check if an event image string is a genuine, valid image URL.
+ * Used for admin alerts and ensuring customers never see missing-image events.
+ */
+export const isEventImageValid = (url) => {
+  if (!url || typeof url !== 'string') return false;
+  const trimmed = url.trim();
+  if (trimmed.length < 10) return false;
+  const lower = trimmed.toLowerCase();
+  if (lower.startsWith('data:') || lower.startsWith('blob:') || lower.startsWith('javascript:')) {
+    return false;
+  }
+  if (
+    lower.includes('placeholder') ||
+    lower.includes('event photo pending') ||
+    lower.includes('no-image') ||
+    lower.includes('dummyimage') ||
+    lower.includes('via.placeholder')
+  ) {
+    return false;
+  }
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+    if (parsed.hostname.includes('cloudinary.com') || parsed.hostname.includes('unsplash.com')) return true;
+    return /\.(jpe?g|png|webp|avif|gif|svg)($|\?)/i.test(parsed.pathname);
+  } catch {
+    return false;
+  }
+};
+

@@ -1,6 +1,8 @@
 import { prisma } from '../config/db.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { isUuid } from '../validators/eventValidators.js';
+import { isEventImageValid } from '../utils/imageValidator.js';
+
 
 /**
  * Format currency minor units (cents) to South African Rand or USD display string
@@ -195,13 +197,23 @@ export const listPublicEvents = async (options = {}) => {
   const limit = Math.min(50, Math.max(1, options.limit || 12));
   const skip = (page - 1) * limit;
 
-  // Base query: ONLY published and active events
+  // Base query: ONLY published, active events with genuine images (no placeholders, no empty images)
   const where = {
     status: 'PUBLISHED',
-    isActive: true
+    isActive: true,
+    imageUrl: { not: '', startsWith: 'http' }
   };
 
-  const andConditions = [];
+  const andConditions = [
+    {
+      NOT: [
+        { imageUrl: { contains: 'placeholder', mode: 'insensitive' } },
+        { imageUrl: { contains: 'event photo pending', mode: 'insensitive' } },
+        { imageUrl: { contains: 'no-image', mode: 'insensitive' } }
+      ]
+    }
+  ];
+
 
   // 1. Search Query: parameterized search across title, venue, location, description
   if (options.search && options.search.trim().length > 0) {
@@ -367,7 +379,10 @@ export const listPublicEvents = async (options = {}) => {
     })
   ]);
 
-  let formattedEvents = rawEvents.map(formatPublicEvent);
+  // Strict service-level verification: Guarantee customers never see events without valid images
+  const validEvents = rawEvents.filter((e) => isEventImageValid(e.imageUrl));
+  let formattedEvents = validEvents.map(formatPublicEvent);
+
 
   // If price sorting is requested, sort accurately using the integer minor units
   if (sortPriceMode) {
@@ -402,7 +417,8 @@ export const getPublicEventByIdOrSlug = async (idOrSlug) => {
     where: {
       ...(isIdUuid ? { id: idOrSlug } : { slug: idOrSlug }),
       status: 'PUBLISHED',
-      isActive: true
+      isActive: true,
+      imageUrl: { not: '', startsWith: 'http' }
     },
     include: {
       category: {
@@ -420,7 +436,7 @@ export const getPublicEventByIdOrSlug = async (idOrSlug) => {
     }
   });
 
-  if (!event) {
+  if (!event || !isEventImageValid(event.imageUrl)) {
     throw new AppError('Event not found or is currently not published.', 404, 'EVENT_NOT_FOUND');
   }
 
@@ -446,7 +462,12 @@ export const listPublicCategories = async () => {
           events: {
             where: {
               status: 'PUBLISHED',
-              isActive: true
+              isActive: true,
+              imageUrl: { not: '', startsWith: 'http' },
+              NOT: [
+                { imageUrl: { contains: 'placeholder', mode: 'insensitive' } },
+                { imageUrl: { contains: 'event photo pending', mode: 'insensitive' } }
+              ]
             }
           }
         }
@@ -474,11 +495,13 @@ export const getEventTicketTypes = async (eventIdOrSlug) => {
     where: {
       ...(isIdUuid ? { id: eventIdOrSlug } : { slug: eventIdOrSlug }),
       status: 'PUBLISHED',
-      isActive: true
+      isActive: true,
+      imageUrl: { not: '', startsWith: 'http' }
     },
     select: {
       id: true,
       title: true,
+      imageUrl: true,
       ticketTypes: {
         where: { isActive: true },
         orderBy: { priceMinor: 'asc' }
@@ -486,9 +509,10 @@ export const getEventTicketTypes = async (eventIdOrSlug) => {
     }
   });
 
-  if (!event) {
+  if (!event || !isEventImageValid(event.imageUrl)) {
     throw new AppError('Event not found or is not currently available.', 404, 'EVENT_NOT_FOUND');
   }
 
   return event.ticketTypes.map(calculateTicketInventory);
 };
+

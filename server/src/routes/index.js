@@ -9,6 +9,7 @@ import paymentRoutes from './paymentRoutes.js';
 import ticketRoutes from './ticketRoutes.js';
 import adminRoutes from './adminRoutes.js';
 import promoCodeRoutes from './promoCodeRoutes.js';
+import cronRoutes from './cronRoutes.js';
 
 const router = Router();
 
@@ -23,5 +24,7 @@ router.use('/payments', paymentRoutes);
 router.use('/tickets', ticketRoutes);
 router.use('/promocodes', promoCodeRoutes);
 router.use('/admin', adminRoutes);
+router.use('/cron', cronRoutes);
 
 export default router;
+

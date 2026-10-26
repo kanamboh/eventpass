@@ -9,6 +9,7 @@ import {
   Tag, 
   Ticket, 
   AlertCircle, 
+  AlertTriangle,
   CheckCircle, 
   Clock, 
   XCircle, 
@@ -25,12 +26,15 @@ import {
   fetchAdminEventById, 
   updateAdminEvent, 
   updateAdminEventStatus,
+  deleteAdminEvent,
   createAdminTicketType,
   updateAdminTicketType,
   deleteAdminTicketType
 } from '../../services/adminApi';
 import { fetchCategories } from '../../services/eventApi';
 import { EventPosterUploader } from '../../components/admin/EventPosterUploader';
+import { isEventImageValid } from '../../utils/imageFallback';
+
 
 const PROVINCES = [
   'Gauteng',
@@ -54,8 +58,14 @@ const AdminEventEditPage = () => {
   const [savingEvent, setSavingEvent] = useState(false);
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
+  const [duplicateWarning, setDuplicateWarning] = useState(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteModalError, setDeleteModalError] = useState(null);
 
   // Event form
+
   const [form, setForm] = useState({
     title: '',
     subtitle: '',
@@ -131,9 +141,10 @@ const AdminEventEditPage = () => {
     setForm((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleEventSubmit = async (e) => {
-    e.preventDefault();
+  const handleEventSubmit = async (e, forceOverride = false) => {
+    if (e && e.preventDefault) e.preventDefault();
     setError(null);
+    setDuplicateWarning(null);
     setSuccessMsg(null);
 
     // Client pre-validation
@@ -204,14 +215,20 @@ const AdminEventEditPage = () => {
         imageUrl: form.imageUrl.trim(),
         bannerUrl: form.bannerUrl.trim() || null,
         organizerName: form.organizerName.trim(),
-        ageRestriction: form.ageRestriction.trim() || null
+        ageRestriction: form.ageRestriction.trim() || null,
+        allowDuplicateOverride: Boolean(forceOverride)
       };
 
       const updated = await updateAdminEvent(eventId, payload);
       setEvent(updated);
       setSuccessMsg('Event details successfully saved.');
     } catch (err) {
-      if (err.details && Array.isArray(err.details)) {
+      if (err.code === 'DUPLICATE_EVENT_DETECTED') {
+        setDuplicateWarning({
+          message: err.message,
+          details: err.details
+        });
+      } else if (err.details && Array.isArray(err.details)) {
         const detailMsg = err.details
           .map((d) => (d.field ? `${d.field}: ${d.message}` : d.message))
           .join(' | ');
@@ -223,6 +240,20 @@ const AdminEventEditPage = () => {
       setSavingEvent(false);
     }
   };
+
+  const handleExecuteDelete = async () => {
+    setDeleteLoading(true);
+    setDeleteModalError(null);
+    try {
+      await deleteAdminEvent(eventId);
+      navigate('/admin/events');
+    } catch (err) {
+      setDeleteModalError(err.message || 'Failed to permanently delete event.');
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
 
   const handleStatusChange = async (newStatus) => {
     setError(null);
@@ -451,7 +482,7 @@ const AdminEventEditPage = () => {
               {event.status === 'COMPLETED' && <CheckCircle className="w-5 h-5" />}
             </div>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Current Status:</span>
                 <span className={`text-sm font-bold px-2.5 py-0.5 rounded-full ${
                   event.status === 'PUBLISHED' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' :
@@ -461,6 +492,12 @@ const AdminEventEditPage = () => {
                 }`}>
                   {event.status}
                 </span>
+                {!isEventImageValid(event.imageUrl) && (
+                  <span className="inline-flex items-center gap-1 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded" title="Public listing hidden: requires valid poster image">
+                    <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+                    <span>Missing Image</span>
+                  </span>
+                )}
               </div>
               <p className="text-xs text-slate-500 mt-0.5">
                 {event.status === 'DRAFT' && 'This event is private and cannot be viewed or purchased by customers.'}
@@ -506,8 +543,55 @@ const AdminEventEditPage = () => {
                 Cancel Event
               </button>
             )}
+
+            <button
+              type="button"
+              onClick={() => {
+                setShowDeleteModal(true);
+                setDeleteConfirmText('');
+                setDeleteModalError(null);
+              }}
+              className="px-3.5 py-1.5 border border-red-300 text-red-600 hover:bg-red-50 rounded text-xs font-semibold transition-colors flex items-center gap-1.5 shadow-sm"
+              title="Permanently Delete Event"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Delete Event</span>
+            </button>
           </div>
         </div>
+
+        {/* Duplicate Event Warning Callout */}
+        {duplicateWarning && (
+          <div className="p-4 bg-amber-50 border border-amber-300 rounded-lg text-sm text-amber-900 space-y-3">
+            <div className="flex items-start gap-2.5">
+              <AlertCircle className="w-5 h-5 flex-shrink-0 text-amber-700 mt-0.5" />
+              <div className="space-y-1">
+                <div className="font-bold text-amber-950">Potential Duplicate Event Detected</div>
+                <p className="text-xs text-amber-800 leading-relaxed">{duplicateWarning.message}</p>
+                {duplicateWarning.details?.duplicateEvent && (
+                  <div className="mt-2 p-2 bg-white/70 border border-amber-200 rounded text-xs font-mono text-slate-700 space-y-0.5">
+                    <div><strong>Existing Event:</strong> {duplicateWarning.details.duplicateEvent.title}</div>
+                    <div><strong>Date:</strong> {new Date(duplicateWarning.details.duplicateEvent.startDateTime).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' })}</div>
+                    <div><strong>Venue:</strong> {duplicateWarning.details.duplicateEvent.venue}</div>
+                    <div><strong>Status:</strong> {duplicateWarning.details.duplicateEvent.status}</div>
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="pt-2 border-t border-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <p className="text-xs text-amber-800">
+                If this is a legitimate recurring event or a distinct event sharing a similar title, you may explicitly approve the duplicate.
+              </p>
+              <button
+                type="button"
+                onClick={(e) => handleEventSubmit(e, true)}
+                className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold rounded shadow-sm whitespace-nowrap transition-colors"
+              >
+                Approve Duplicate & Proceed
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Global Notifications */}
         {error && (
@@ -1047,6 +1131,93 @@ const AdminEventEditPage = () => {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+
+        {/* Permanent Deletion Confirmation Modal */}
+        {showDeleteModal && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-4 border border-red-200">
+              <div className="flex items-center gap-3 text-red-600">
+                <div className="p-2 bg-red-100 rounded-lg">
+                  <Trash2 className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">Permanently Delete Event</h3>
+                  <p className="text-xs text-slate-500">This action cannot be undone.</p>
+                </div>
+              </div>
+
+              <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-800 space-y-1">
+                <p><strong>Warning:</strong> You are about to permanently delete:</p>
+                <p className="font-semibold text-slate-900">{form.title || event?.title}</p>
+                <p className="font-mono text-[10px] text-slate-500">ID: {eventId}</p>
+                <p className="mt-1">
+                  Only events with zero customer orders, tickets, or historical transactions can be permanently deleted.
+                </p>
+              </div>
+
+              {deleteModalError && (
+                <div className="p-3 bg-amber-50 border border-amber-300 rounded-lg text-xs text-amber-900 space-y-1">
+                  <p className="font-semibold">Deletion Blocked:</p>
+                  <p>{deleteModalError}</p>
+                  {deleteModalError.includes('transactions') && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setShowDeleteModal(false);
+                        await handleStatusChange('CANCELLED');
+                      }}
+                      className="mt-1 px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs font-semibold"
+                    >
+                      Cancel Event Instead
+                    </button>
+                  )}
+                </div>
+              )}
+
+              <div className="space-y-1.5 pt-2">
+                <label className="block text-xs font-semibold text-slate-700">
+                  Type <span className="font-mono text-red-600">DELETE</span> to confirm:
+                </label>
+                <input
+                  type="text"
+                  value={deleteConfirmText}
+                  onChange={(e) => setDeleteConfirmText(e.target.value)}
+                  placeholder="DELETE"
+                  className="w-full px-3 py-1.5 text-xs border border-gray-300 rounded focus:outline-none focus:border-red-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => setShowDeleteModal(false)}
+                  disabled={deleteLoading}
+                  className="px-4 py-2 text-xs font-semibold text-slate-700 bg-gray-100 hover:bg-gray-200 rounded transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExecuteDelete}
+                  disabled={deleteConfirmText.trim().toUpperCase() !== 'DELETE' || deleteLoading}
+                  className="px-4 py-2 text-xs font-semibold text-white bg-red-600 hover:bg-red-700 disabled:opacity-40 rounded transition-colors flex items-center gap-1.5 shadow-sm"
+                >
+                  {deleteLoading ? (
+                    <>
+                      <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-white"></div>
+                      <span>Deleting Permanently...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Permanently Delete</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         )}

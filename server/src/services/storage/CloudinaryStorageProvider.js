@@ -105,4 +105,52 @@ export class CloudinaryStorageProvider extends StorageProvider {
       );
     }
   }
+
+  /**
+   * Permanently delete an image asset from Cloudinary.
+   *
+   * @param {string} publicId - Storage asset identifier (e.g. 'event_posters/xxx')
+   * @returns {Promise<{ result: string }>}
+   */
+  async deleteImage(publicId) {
+    if (!this.isConfigured()) {
+      logger.warn('CloudinaryStorageProvider: deleteImage skipped because credentials are not configured.');
+      return { result: 'skipped' };
+    }
+
+    if (!publicId || typeof publicId !== 'string') {
+      return { result: 'invalid_id' };
+    }
+
+    const timestamp = Math.floor(Date.now() / 1000);
+    const signingParams = {
+      public_id: publicId,
+      timestamp
+    };
+
+    const signature = this.generateSignature(signingParams, this.apiSecret);
+
+    const formData = new FormData();
+    formData.append('public_id', publicId);
+    formData.append('api_key', this.apiKey);
+    formData.append('timestamp', String(timestamp));
+    formData.append('signature', signature);
+
+    const endpoint = `https://api.cloudinary.com/v1_1/${encodeURIComponent(this.cloudName)}/image/destroy`;
+
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        body: formData
+      });
+
+      const body = await response.json().catch(() => ({}));
+      logger.info({ publicId, status: response.status, result: body?.result }, 'Cloudinary image destroy response');
+      return { result: body?.result || 'ok' };
+    } catch (err) {
+      logger.warn({ error: err.message, publicId }, 'Failed to delete Cloudinary asset (non-fatal)');
+      return { result: 'error', error: err.message };
+    }
+  }
 }
+

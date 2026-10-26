@@ -8,6 +8,7 @@ import {
   Edit3, 
   Eye, 
   AlertCircle, 
+  AlertTriangle,
   CheckCircle, 
   Clock, 
   XCircle, 
@@ -15,11 +16,14 @@ import {
   ArrowRight,
   Filter,
   Tag,
-  Shield
+  Shield,
+  Trash2,
+  X
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { fetchAdminEvents, updateAdminEventStatus } from '../../services/adminApi';
-import { FALLBACK_EVENT_IMAGE, handleImageError } from '../../utils/imageFallback';
+import { fetchAdminEvents, updateAdminEventStatus, deleteAdminEvent } from '../../services/adminApi';
+import { FALLBACK_EVENT_IMAGE, handleImageError, isEventImageValid } from '../../utils/imageFallback';
+
 
 const STATUS_CONFIG = {
   PUBLISHED: {
@@ -99,6 +103,29 @@ const AdminEventsPage = () => {
       setActionLoadingId(null);
     }
   };
+
+  // Permanent Deletion Modal state
+  const [deletingEvent, setDeletingEvent] = useState(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState(null);
+
+  const handleExecuteDelete = async () => {
+    if (!deletingEvent) return;
+    setDeleteLoading(true);
+    setDeleteError(null);
+    try {
+      await deleteAdminEvent(deletingEvent.id);
+      setDeletingEvent(null);
+      setDeleteConfirmText('');
+      await loadEvents(pagination.page);
+    } catch (err) {
+      setDeleteError(err.message || 'Failed to permanently delete event.');
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
 
   return (
     <div className="min-h-screen bg-slate-50 py-8 px-4 sm:px-6 lg:px-8">
@@ -259,9 +286,16 @@ const AdminEventsPage = () => {
                                 <span className="text-slate-400 font-mono text-[11px] truncate max-w-[120px]">
                                   /{evt.slug}
                                 </span>
+                                {!isEventImageValid(evt.imageUrl) && (
+                                  <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded" title="Public listing hidden: requires valid poster image">
+                                    <AlertTriangle className="w-3 h-3 text-amber-600" />
+                                    <span>Missing Image</span>
+                                  </span>
+                                )}
                               </div>
                             </div>
                           </div>
+
                         </td>
 
                         {/* Date & Time */}
@@ -374,14 +408,29 @@ const AdminEventsPage = () => {
                                   }
                                 }}
                                 disabled={isActionLoading}
-                                className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
+                                className="p-1.5 text-amber-600 hover:text-amber-800 hover:bg-amber-50 rounded transition-colors disabled:opacity-50"
                                 title="Cancel Event"
                               >
                                 <XCircle className="w-4 h-4" />
                               </button>
                             )}
+
+                            {/* Permanent Deletion (Authorized Admins only) */}
+                            <button
+                              onClick={() => {
+                                setDeletingEvent(evt);
+                                setDeleteConfirmText('');
+                                setDeleteError(null);
+                              }}
+                              disabled={isActionLoading}
+                              className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
+                              title="Permanently Delete Event"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
                           </div>
                         </td>
+
                       </tr>
                     );
                   })}
@@ -416,9 +465,121 @@ const AdminEventsPage = () => {
           )}
         </div>
 
+        {/* Permanent Deletion Confirmation Modal */}
+        {deletingEvent && (
+          <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6 border border-gray-200 space-y-4">
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-3 text-red-600">
+                  <div className="p-2 bg-red-100 rounded-full">
+                    <Trash2 className="w-5 h-5 text-red-600" />
+                  </div>
+                  <h3 className="text-lg font-bold text-slate-900">
+                    Permanently Delete Event
+                  </h3>
+                </div>
+                <button
+                  onClick={() => setDeletingEvent(null)}
+                  disabled={deleteLoading}
+                  className="text-slate-400 hover:text-slate-600 p-1"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-3 text-sm text-slate-600">
+                <div className="p-3 bg-red-50 border border-red-200 rounded text-xs text-red-800 space-y-1">
+                  <div className="font-bold flex items-center gap-1.5 text-red-900">
+                    <AlertCircle className="w-4 h-4 text-red-700" />
+                    <span>Permanent Deletion Warning</span>
+                  </div>
+                  <p>
+                    This operation will permanently remove the event record, ticket tiers, and unshared cloud images from the system. This cannot be undone.
+                  </p>
+                </div>
+
+                <div className="bg-slate-50 border border-slate-200 rounded p-3 text-xs space-y-1.5 font-mono">
+                  <div><span className="text-slate-400">Event Title:</span> <strong className="text-slate-800 font-sans">{deletingEvent.title}</strong></div>
+                  <div><span className="text-slate-400">Event ID:</span> <span className="text-slate-700 text-[11px]">{deletingEvent.id}</span></div>
+                  <div><span className="text-slate-400">Current Status:</span> <span className="text-slate-700 font-semibold">{deletingEvent.status}</span></div>
+                </div>
+
+                <div className="text-xs text-slate-500">
+                  <strong>Safety Constraint:</strong> Events with customer orders, issued tickets, or financial records cannot be deleted. If historical customer data exists, deletion will be blocked and you will be advised to cancel or archive the event instead.
+                </div>
+
+                {deleteError && (
+                  <div className="p-3 bg-red-50 border border-red-300 rounded text-xs text-red-700 space-y-2">
+                    <div className="flex items-start gap-2">
+                      <AlertCircle className="w-4 h-4 flex-shrink-0 text-red-600 mt-0.5" />
+                      <span>{deleteError}</span>
+                    </div>
+                    {deleteError.includes('orders') && deletingEvent.status !== 'CANCELLED' && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const id = deletingEvent.id;
+                          setDeletingEvent(null);
+                          await handleStatusChange(id, 'CANCELLED');
+                        }}
+                        className="mt-1 px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs font-semibold"
+                      >
+                        Cancel Event Instead
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                <div className="space-y-1.5 pt-2">
+                  <label className="block text-xs font-semibold text-slate-700">
+                    Type <span className="font-mono text-red-600">DELETE</span> to confirm:
+                  </label>
+                  <input
+                    type="text"
+                    value={deleteConfirmText}
+                    onChange={(e) => setDeleteConfirmText(e.target.value)}
+                    placeholder="DELETE"
+                    className="w-full px-3 py-1.5 text-xs border border-gray-300 rounded focus:outline-none focus:border-red-500"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => setDeletingEvent(null)}
+                  disabled={deleteLoading}
+                  className="px-4 py-2 text-xs font-semibold text-slate-700 bg-gray-100 hover:bg-gray-200 rounded transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExecuteDelete}
+                  disabled={deleteConfirmText.trim().toUpperCase() !== 'DELETE' || deleteLoading}
+                  className="px-4 py-2 text-xs font-semibold text-white bg-red-600 hover:bg-red-700 disabled:opacity-40 rounded transition-colors flex items-center gap-1.5 shadow-sm"
+                >
+                  {deleteLoading ? (
+                    <>
+                      <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-white"></div>
+                      <span>Deleting Permanently...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Permanently Delete</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
       </div>
     </div>
   );
 };
+
 
 export default AdminEventsPage;

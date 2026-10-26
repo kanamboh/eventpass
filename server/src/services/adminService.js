@@ -3,8 +3,10 @@ import { prisma } from '../config/db.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { logger } from '../config/logger.js';
 import { formatCurrency, calculateTicketInventory } from './eventService.js';
-import { validateImageBuffer } from '../utils/imageValidator.js';
+import { validateImageBuffer, isEventImageValid, extractCloudinaryPublicId } from '../utils/imageValidator.js';
 import { getStorageProvider } from './storage/storageProviderFactory.js';
+import { detectDuplicateEvent } from './duplicateDetectionService.js';
+
 
 /**
  * Generate URL-friendly slug from title
@@ -232,11 +234,57 @@ export const createAdminEvent = async ({ adminUserId, data }) => {
     throw new AppError('Selected category does not exist.', 400, 'CATEGORY_NOT_FOUND');
   }
 
+  // 2. Strict Image Check: An event must never be published without a genuine image
+  if (data.status === 'PUBLISHED' && !isEventImageValid(data.imageUrl)) {
+    throw new AppError(
+      'Cannot publish an event without a valid image. A genuine poster image is required for public display.',
+      400,
+      'CANNOT_PUBLISH_WITHOUT_VALID_IMAGE'
+    );
+  }
+
   return await prisma.$transaction(async (tx) => {
-    // 2. Generate unique slug
+    // 3. Duplicate Event Detection across all statuses
+    const duplicateResult = await detectDuplicateEvent({
+      tx,
+      title: data.title,
+      startDateTime: data.startDateTime,
+      venue: data.venue,
+      location: data.location
+    });
+
+    if (duplicateResult.isDuplicate) {
+      if (data.allowDuplicateOverride) {
+        await recordAdminAuditLog({
+          adminUserId,
+          action: 'event.duplicate_override_approved',
+          entityType: 'event',
+          entityId: 'NEW_PENDING',
+          payload: {
+            title: data.title,
+            duplicateOfId: duplicateResult.duplicateEvent?.id,
+            duplicateOfTitle: duplicateResult.duplicateEvent?.title,
+            matchType: duplicateResult.matchType
+          }
+        });
+      } else {
+        throw new AppError(
+          duplicateResult.message,
+          409,
+          'DUPLICATE_EVENT_DETECTED',
+          {
+            duplicateEvent: duplicateResult.duplicateEvent,
+            matchType: duplicateResult.matchType
+          }
+        );
+      }
+    }
+
+    // 4. Generate unique slug
     const slug = await generateSlug(data.title, tx);
 
-    // 3. Create Event record
+    // 5. Create Event record
+
     const event = await tx.event.create({
       data: {
         slug,
@@ -328,7 +376,61 @@ export const updateAdminEvent = async ({ adminUserId, eventId, data }) => {
     }
   }
 
+  // Strict Image Check: If the event is or will be published, ensure image is valid
+  const willBePublished = (data.status === 'PUBLISHED') ||
+    (existing.status === 'PUBLISHED' && data.status !== 'DRAFT' && data.status !== 'CANCELLED');
+  const candidateImage = data.imageUrl !== undefined ? data.imageUrl : existing.imageUrl;
+  if (willBePublished && !isEventImageValid(candidateImage)) {
+    throw new AppError(
+      'Cannot publish an event without a valid image. A genuine poster image is required for public display.',
+      400,
+      'CANNOT_PUBLISH_WITHOUT_VALID_IMAGE'
+    );
+  }
+
+  // Duplicate Event Check (excluding current event)
+  const titleToCheck = data.title !== undefined ? data.title : existing.title;
+  const startDateToCheck = data.startDateTime !== undefined ? data.startDateTime : existing.startDateTime;
+  const venueToCheck = data.venue !== undefined ? data.venue : existing.venue;
+  const locationToCheck = data.location !== undefined ? data.location : existing.location;
+
+  const duplicateResult = await detectDuplicateEvent({
+    title: titleToCheck,
+    startDateTime: startDateToCheck,
+    venue: venueToCheck,
+    location: locationToCheck,
+    excludeEventId: eventId
+  });
+
+  if (duplicateResult.isDuplicate) {
+    if (data.allowDuplicateOverride) {
+      await recordAdminAuditLog({
+        adminUserId,
+        action: 'event.duplicate_override_approved',
+        entityType: 'event',
+        entityId: eventId,
+        payload: {
+          title: titleToCheck,
+          duplicateOfId: duplicateResult.duplicateEvent?.id,
+          duplicateOfTitle: duplicateResult.duplicateEvent?.title,
+          matchType: duplicateResult.matchType
+        }
+      });
+    } else {
+      throw new AppError(
+        duplicateResult.message,
+        409,
+        'DUPLICATE_EVENT_DETECTED',
+        {
+          duplicateEvent: duplicateResult.duplicateEvent,
+          matchType: duplicateResult.matchType
+        }
+      );
+    }
+  }
+
   const updatePayload = {};
+
 
   if (data.title !== undefined) updatePayload.title = data.title;
   if (data.subtitle !== undefined) updatePayload.subtitle = data.subtitle;
@@ -381,13 +483,21 @@ export const updateAdminEventStatus = async ({ adminUserId, eventId, status }) =
     throw new AppError('Event not found.', 404, 'EVENT_NOT_FOUND');
   }
 
-  // Publishing requires at least one active ticket tier
+  // Publishing requires at least one active ticket tier and a valid image
   if (status === 'PUBLISHED') {
     if (!event.ticketTypes || event.ticketTypes.length === 0) {
       throw new AppError(
         'Cannot publish an event with zero ticket tiers. Add at least one ticket tier first.',
         400,
         'CANNOT_PUBLISH_EMPTY_EVENT'
+      );
+    }
+
+    if (!isEventImageValid(event.imageUrl)) {
+      throw new AppError(
+        'Cannot publish an event without a valid image. A genuine poster image is required for public display.',
+        400,
+        'CANNOT_PUBLISH_WITHOUT_VALID_IMAGE'
       );
     }
   }
@@ -468,6 +578,138 @@ export const updateAdminEventStatus = async ({ adminUserId, eventId, status }) =
     return formatAdminEventDto(updated);
   });
 };
+
+/**
+ * Permanently delete an event if dependency checks confirm it is safe.
+ *
+ * Security & Data Safety Rules:
+ * - Only ADMIN or SUPER_ADMIN may delete events.
+ * - If orders or issued tickets exist for this event: BLOCK deletion and suggest archival/cancellation.
+ * - Transactionally delete reservations, promo links, ticket tiers, and event record.
+ * - After successful DB transaction, inspect whether event image is used by other events.
+ *   If not shared, delete Cloudinary asset. Storage failure never rolls back the DB deletion.
+ * - Audit log recorded via recordAdminAuditLog.
+ */
+export const deleteAdminEvent = async ({ adminUserId, eventId }) => {
+  const event = await prisma.event.findUnique({
+    where: { id: eventId },
+    include: {
+      ticketTypes: true
+    }
+  });
+
+  if (!event) {
+    throw new AppError('Event not found.', 404, 'EVENT_NOT_FOUND');
+  }
+
+  // 1. Dependency checks: Block deletion if orders or issued tickets exist
+  const [orderItemsCount, ticketsCount] = await Promise.all([
+    prisma.orderItem.count({ where: { eventId } }),
+    prisma.ticket.count({ where: { eventId } })
+  ]);
+
+  if (orderItemsCount > 0 || ticketsCount > 0) {
+    throw new AppError(
+      `Cannot permanently delete event "${event.title}" because it has ${orderItemsCount} order item(s) and ${ticketsCount} issued ticket(s). To protect historical customer records and financial accounting, please cancel or archive the event instead.`,
+      409,
+      'CANNOT_DELETE_EVENT_WITH_TRANSACTIONS'
+    );
+  }
+
+  const imageUrl = event.imageUrl;
+
+  // 2. Perform database deletion transactionally
+  await prisma.$transaction(async (tx) => {
+    // Re-verify counts within transaction for strict concurrency safety
+    const concurrentOrderItems = await tx.orderItem.count({ where: { eventId } });
+    const concurrentTickets = await tx.ticket.count({ where: { eventId } });
+    if (concurrentOrderItems > 0 || concurrentTickets > 0) {
+      throw new AppError(
+        'Concurrent customer transactions detected. Deletion blocked.',
+        409,
+        'CANNOT_DELETE_EVENT_WITH_TRANSACTIONS'
+      );
+    }
+
+    const tierIds = event.ticketTypes.map((t) => t.id);
+
+    // Delete active and expired reservations on this event's tiers
+    if (tierIds.length > 0) {
+      await tx.reservation.deleteMany({
+        where: { ticketTypeId: { in: tierIds } }
+      });
+
+      // Delete promo code relations referencing tiers
+      await tx.promoCodeTicketType.deleteMany({
+        where: { ticketTypeId: { in: tierIds } }
+      });
+    }
+
+    // Delete promo code relations referencing event
+    await tx.promoCodeEvent.deleteMany({
+      where: { eventId }
+    });
+
+    // Delete ticket tiers
+    await tx.ticketType.deleteMany({
+      where: { eventId }
+    });
+
+    // Delete event record
+    await tx.event.delete({
+      where: { id: eventId }
+    });
+  });
+
+  // 3. Post-transaction Cloudinary asset cleanup (only unshared images)
+  try {
+    if (imageUrl) {
+      const sharedCount = await prisma.event.count({
+        where: {
+          OR: [
+            { imageUrl },
+            { bannerUrl: imageUrl }
+          ]
+        }
+      });
+
+      if (sharedCount === 0) {
+        const publicId = extractCloudinaryPublicId(imageUrl);
+        if (publicId) {
+          const storageProvider = getStorageProvider();
+          await storageProvider.deleteImage(publicId);
+          logger.info({ publicId, eventId }, 'Deleted unshared Cloudinary asset for permanently deleted event.');
+        }
+      } else {
+        logger.info({ imageUrl, sharedCount, eventId }, 'Preserved shared image asset during event deletion.');
+      }
+    }
+  } catch (err) {
+    logger.warn({ error: err.message, eventId }, 'Cloudinary image cleanup failed post-deletion (non-fatal).');
+  }
+
+  // 4. Record Admin Audit Log
+  await recordAdminAuditLog({
+    adminUserId,
+    action: 'event.permanently_deleted',
+    entityType: 'event',
+    entityId: eventId,
+    payload: {
+      title: event.title,
+      slug: event.slug,
+      deletedTiersCount: event.ticketTypes?.length || 0,
+      timestamp: new Date().toISOString()
+    }
+  });
+
+  return {
+    success: true,
+    message: 'Event permanently deleted successfully.',
+    deletedEventId: eventId,
+    title: event.title
+  };
+};
+
 
 /**
  * Add a new ticket tier to an event

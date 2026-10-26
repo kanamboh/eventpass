@@ -34,6 +34,11 @@ export class MockStorageProvider extends StorageProvider {
     };
   }
 
+  async deleteImage(publicId) {
+    const deleted = this.uploadedImages.delete(publicId);
+    return { result: deleted ? 'ok' : 'not found' };
+  }
+
   hasImage(publicId) {
     return this.uploadedImages.has(publicId);
   }
@@ -42,3 +47,4 @@ export class MockStorageProvider extends StorageProvider {
     this.uploadedImages.clear();
   }
 }
+
