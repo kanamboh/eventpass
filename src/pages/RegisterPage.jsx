@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Ticket, User, Mail, Lock, Phone, MapPin, ArrowRight, AlertCircle, CheckCircle, Loader2 } from 'lucide-react';
+import { Ticket, User, Mail, Lock, Phone, MapPin, ArrowRight, AlertCircle, CheckCircle, Loader2, Eye, EyeOff } from 'lucide-react';
 import { CITIES } from '../data/mockEvents';
 import { useAuth } from '../context/AuthContext';
 
@@ -22,6 +22,8 @@ const RegisterPage = () => {
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successInfo, setSuccessInfo] = useState(null);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const handleChange = (e) => {
     const { name, type, checked, value } = e.target;
@@ -229,17 +231,31 @@ const RegisterPage = () => {
                     Password
                   </label>
                   <div className="relative">
-                    <Lock className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    <Lock className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                     <input
-                      type="password"
+                      type={showPassword ? 'text' : 'password'}
                       name="password"
                       value={formData.password}
                       onChange={handleChange}
                       required
                       disabled={isSubmitting}
                       placeholder="Min 8 chars, 1 uppercase, 1 digit"
-                      className="w-full h-11 pl-10 pr-4 rounded-xl border border-gray-200 text-xs font-medium focus:outline-none focus:border-[#7fbd52] disabled:bg-gray-50"
+                      className="w-full h-11 pl-10 pr-10 rounded-xl border border-gray-200 text-xs font-medium focus:outline-none focus:border-[#7fbd52] disabled:bg-gray-50"
                     />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((prev) => !prev)}
+                      disabled={isSubmitting}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-slate-600 focus:outline-none focus:ring-2 focus:ring-[#7fbd52] focus:ring-offset-1 rounded-lg transition-colors"
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}
+                      title={showPassword ? 'Hide password' : 'Show password'}
+                    >
+                      {showPassword ? (
+                        <EyeOff className="w-4 h-4" aria-hidden="true" />
+                      ) : (
+                        <Eye className="w-4 h-4" aria-hidden="true" />
+                      )}
+                    </button>
                   </div>
                 </div>
 
@@ -248,17 +264,31 @@ const RegisterPage = () => {
                     Confirm Password
                   </label>
                   <div className="relative">
-                    <Lock className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    <Lock className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                     <input
-                      type="password"
+                      type={showConfirmPassword ? 'text' : 'password'}
                       name="confirmPassword"
                       value={formData.confirmPassword}
                       onChange={handleChange}
                       required
                       disabled={isSubmitting}
                       placeholder="Confirm your password"
-                      className="w-full h-11 pl-10 pr-4 rounded-xl border border-gray-200 text-xs font-medium focus:outline-none focus:border-[#7fbd52] disabled:bg-gray-50"
+                      className="w-full h-11 pl-10 pr-10 rounded-xl border border-gray-200 text-xs font-medium focus:outline-none focus:border-[#7fbd52] disabled:bg-gray-50"
                     />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword((prev) => !prev)}
+                      disabled={isSubmitting}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-slate-600 focus:outline-none focus:ring-2 focus:ring-[#7fbd52] focus:ring-offset-1 rounded-lg transition-colors"
+                      aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
+                      title={showConfirmPassword ? 'Hide password' : 'Show password'}
+                    >
+                      {showConfirmPassword ? (
+                        <EyeOff className="w-4 h-4" aria-hidden="true" />
+                      ) : (
+                        <Eye className="w-4 h-4" aria-hidden="true" />
+                      )}
+                    </button>
                   </div>
                 </div>
               </div>

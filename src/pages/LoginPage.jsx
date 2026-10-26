@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { Ticket, Lock, Mail, ArrowRight, AlertCircle, Loader2 } from 'lucide-react';
+import { Ticket, Lock, Mail, ArrowRight, AlertCircle, Loader2, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 const LoginPage = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -90,16 +91,30 @@ const LoginPage = () => {
               </a>
             </div>
             <div className="relative">
-              <Lock className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <Lock className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
-                type="password"
+                type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 disabled={isSubmitting}
                 placeholder="Enter your password"
-                className="w-full h-11 pl-10 pr-4 rounded-xl border border-gray-200 text-xs font-medium focus:outline-none focus:border-[#7fbd52] disabled:bg-gray-50"
+                className="w-full h-11 pl-10 pr-10 rounded-xl border border-gray-200 text-xs font-medium focus:outline-none focus:border-[#7fbd52] disabled:bg-gray-50"
               />
+              <button
+                type="button"
+                onClick={() => setShowPassword((prev) => !prev)}
+                disabled={isSubmitting}
+                className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-slate-600 focus:outline-none focus:ring-2 focus:ring-[#7fbd52] focus:ring-offset-1 rounded-lg transition-colors"
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                title={showPassword ? 'Hide password' : 'Show password'}
+              >
+                {showPassword ? (
+                  <EyeOff className="w-4 h-4" aria-hidden="true" />
+                ) : (
+                  <Eye className="w-4 h-4" aria-hidden="true" />
+                )}
+              </button>
             </div>
           </div>
 
