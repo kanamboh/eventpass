@@ -209,11 +209,18 @@ export const listPublicEvents = async (options = {}) => {
       NOT: [
         { imageUrl: { contains: 'placeholder', mode: 'insensitive' } },
         { imageUrl: { contains: 'event photo pending', mode: 'insensitive' } },
-        { imageUrl: { contains: 'no-image', mode: 'insensitive' } }
+        { imageUrl: { contains: 'no-image', mode: 'insensitive' } },
+        { imageUrl: { contains: 'noimage', mode: 'insensitive' } },
+        { imageUrl: { contains: 'dummyimage', mode: 'insensitive' } },
+        { imageUrl: { contains: 'via.placeholder', mode: 'insensitive' } },
+        { imageUrl: { contains: 'eventpass-mock', mode: 'insensitive' } },
+        { imageUrl: { contains: 'photo-symphony', mode: 'insensitive' } },
+        { imageUrl: { contains: 'photo-test', mode: 'insensitive' } },
+        { imageUrl: { contains: 'test-pricing', mode: 'insensitive' } },
+        { imageUrl: { contains: 'example.com', mode: 'insensitive' } }
       ]
     }
   ];
-
 
   // 1. Search Query: parameterized search across title, venue, location, description
   if (options.search && options.search.trim().length > 0) {
@@ -339,50 +346,44 @@ export const listPublicEvents = async (options = {}) => {
       orderBy = [{ startDateTime: 'asc' }];
   }
 
-  // Execute Count & Relational Query concurrently (Avoids N+1 query patterns)
-  const [total, rawEvents] = await Promise.all([
-    prisma.event.count({ where }),
-    prisma.event.findMany({
-      where,
-      skip: sortPriceMode ? 0 : skip, // If price sorting, we calculate on minor units
-      take: sortPriceMode ? undefined : limit,
-      include: {
-        category: {
-          select: {
-            id: true,
-            slug: true,
-            name: true,
-            icon: true
-          }
-        },
-        ticketTypes: {
-          where: { isActive: true },
-          select: {
-            id: true,
-            eventId: true,
-            name: true,
-            description: true,
-            priceMinor: true,
-            currency: true,
-            quantityTotal: true,
-            quantitySold: true,
-            quantityReserved: true,
-            status: true,
-            maxPerOrder: true,
-            isActive: true,
-            createdAt: true,
-            updatedAt: true
-          }
+  // Fetch all matching events in DB that satisfy base criteria
+  const rawEvents = await prisma.event.findMany({
+    where,
+    include: {
+      category: {
+        select: {
+          id: true,
+          slug: true,
+          name: true,
+          icon: true
         }
       },
-      orderBy: sortPriceMode ? undefined : orderBy
-    })
-  ]);
+      ticketTypes: {
+        where: { isActive: true },
+        select: {
+          id: true,
+          eventId: true,
+          name: true,
+          description: true,
+          priceMinor: true,
+          currency: true,
+          quantityTotal: true,
+          quantitySold: true,
+          quantityReserved: true,
+          status: true,
+          maxPerOrder: true,
+          isActive: true,
+          createdAt: true,
+          updatedAt: true
+        }
+      }
+    },
+    orderBy: sortPriceMode ? undefined : orderBy
+  });
 
   // Strict service-level verification: Guarantee customers never see events without valid images
   const validEvents = rawEvents.filter((e) => isEventImageValid(e.imageUrl));
   let formattedEvents = validEvents.map(formatPublicEvent);
-
 
   // If price sorting is requested, sort accurately using the integer minor units
   if (sortPriceMode) {
@@ -391,14 +392,15 @@ export const listPublicEvents = async (options = {}) => {
         ? a.priceMinor - b.priceMinor
         : b.priceMinor - a.priceMinor;
     });
-    // Apply pagination slice after exact price minor unit sorting
-    formattedEvents = formattedEvents.slice(skip, skip + limit);
   }
 
+  // Exact pagination math: total and totalPages match validEvents 100%
+  const total = formattedEvents.length;
+  const paginatedItems = formattedEvents.slice(skip, skip + limit);
   const totalPages = Math.ceil(total / limit) || 1;
 
   return {
-    items: formattedEvents,
+    items: paginatedItems,
     page,
     limit,
     total,
@@ -451,29 +453,34 @@ export const getPublicEventBySlug = async (slug) => {
 };
 
 /**
- * List all public categories with active event counts
+ * List all public categories with accurate active published event counts
+ * Counts strictly adhere to the same image eligibility rules
  */
 export const listPublicCategories = async () => {
-  const categories = await prisma.category.findMany({
-    orderBy: { name: 'asc' },
-    include: {
-      _count: {
-        select: {
-          events: {
-            where: {
-              status: 'PUBLISHED',
-              isActive: true,
-              imageUrl: { not: '', startsWith: 'http' },
-              NOT: [
-                { imageUrl: { contains: 'placeholder', mode: 'insensitive' } },
-                { imageUrl: { contains: 'event photo pending', mode: 'insensitive' } }
-              ]
-            }
-          }
-        }
+  const [categories, validEvents] = await Promise.all([
+    prisma.category.findMany({
+      orderBy: { name: 'asc' }
+    }),
+    prisma.event.findMany({
+      where: {
+        status: 'PUBLISHED',
+        isActive: true,
+        imageUrl: { not: '', startsWith: 'http' }
+      },
+      select: {
+        id: true,
+        categoryId: true,
+        imageUrl: true
       }
+    })
+  ]);
+
+  const categoryCountMap = new Map();
+  for (const ev of validEvents) {
+    if (isEventImageValid(ev.imageUrl)) {
+      categoryCountMap.set(ev.categoryId, (categoryCountMap.get(ev.categoryId) || 0) + 1);
     }
-  });
+  }
 
   return categories.map((cat) => ({
     id: cat.id,
@@ -481,7 +488,7 @@ export const listPublicCategories = async () => {
     name: cat.name,
     description: cat.description,
     icon: cat.icon,
-    eventCount: cat._count.events
+    eventCount: categoryCountMap.get(cat.id) || 0
   }));
 };
 

@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { CITIES, CATEGORIES } from '../data/mockEvents';
 import { fetchEvents } from '../services/eventApi';
-import { FALLBACK_EVENT_IMAGE, handleImageError } from '../utils/imageFallback';
+import { FALLBACK_EVENT_IMAGE, handleImageError, isEventImageValid } from '../utils/imageFallback';
 
 const Hero = () => {
   const [featuredEvents, setFeaturedEvents] = useState([]);
@@ -28,7 +28,8 @@ const Hero = () => {
       .then((data) => {
         if (isCancelled) return;
         if (data.items && data.items.length > 0) {
-          setFeaturedEvents(data.items);
+          const valid = data.items.filter((e) => isEventImageValid(e.bannerUrl || e.imageUrl));
+          setFeaturedEvents(valid);
         }
       })
       .catch((err) => {
@@ -92,10 +93,15 @@ const Hero = () => {
           {/* Background Image with Cinematic Overlay */}
           <div className="absolute inset-0 z-0">
             <img
-              src={activeEvent.bannerUrl || activeEvent.imageUrl || activeEvent.image || FALLBACK_EVENT_IMAGE}
+              src={activeEvent.bannerUrl || activeEvent.imageUrl || activeEvent.image || defaultHeroEvent.imageUrl}
               alt={activeEvent.title}
               className="w-full h-full object-cover object-center transform scale-105 transition-transform duration-1000 ease-out"
-              onError={handleImageError}
+              onError={(e) => {
+                handleImageError(e, activeEvent.id);
+                if (activeEvent.id !== defaultHeroEvent.id) {
+                  setFeaturedEvents((prev) => prev.filter((ev) => ev.id !== activeEvent.id));
+                }
+              }}
             />
             <div className="absolute inset-0 bg-gradient-to-t sm:bg-gradient-to-r from-slate-950 via-slate-950/90 to-slate-950/20"></div>
             <div className="absolute inset-0 bg-[#1a2b49]/40 mix-blend-multiply"></div>

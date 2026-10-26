@@ -145,24 +145,40 @@ export function isEventImageValid(url) {
   }
 
   const trimmed = url.trim();
-  if (trimmed.length < 10) {
+  if (trimmed.length < 12) {
     return false;
   }
 
-  // Reject data URIs, placeholders, and dummy text
+  // Reject data URIs, blobs, javascript:, and invalid schemes
   const lower = trimmed.toLowerCase();
-  if (lower.startsWith('data:') || lower.startsWith('blob:') || lower.startsWith('javascript:')) {
-    return false;
-  }
-
   if (
-    lower.includes('placeholder') ||
-    lower.includes('event photo pending') ||
-    lower.includes('no-image') ||
-    lower.includes('dummyimage') ||
-    lower.includes('via.placeholder')
+    lower.startsWith('data:') ||
+    lower.startsWith('blob:') ||
+    lower.startsWith('javascript:')
   ) {
     return false;
+  }
+
+  // Explicit placeholder keywords and mock domains
+  const placeholderPatterns = [
+    'placeholder',
+    'event photo pending',
+    'no-image',
+    'noimage',
+    'dummyimage',
+    'via.placeholder',
+    'example.com',
+    'eventpass-mock',
+    'test-pricing',
+    'photo-symphony',
+    'photo-test',
+    'placeholder.com'
+  ];
+
+  for (const pattern of placeholderPatterns) {
+    if (lower.includes(pattern)) {
+      return false;
+    }
   }
 
   try {
@@ -171,19 +187,38 @@ export function isEventImageValid(url) {
       return false;
     }
 
-    // Cloudinary assets (res.cloudinary.com or api.cloudinary.com)
-    if (parsed.hostname.includes('cloudinary.com')) {
-      // Must contain image path beyond root
-      return parsed.pathname.length > 5;
+    const hostname = parsed.hostname.toLowerCase();
+    const pathname = parsed.pathname;
+
+    // 1. Cloudinary assets
+    if (hostname.includes('cloudinary.com')) {
+      // Reject mock or sample cloud names
+      if (
+        pathname.includes('/eventpass-mock/') ||
+        pathname.includes('/demo/') ||
+        /\/sample\.(jpe?g|png|webp|avif)/i.test(pathname) ||
+        pathname.includes('/placeholder')
+      ) {
+        return false;
+      }
+      // Must contain image/upload or valid path
+      return pathname.length > 8 && pathname.includes('/image/');
     }
 
-    // Supported image CDN hostnames (e.g. Unsplash)
-    if (parsed.hostname.includes('unsplash.com')) {
-      return true;
+    // 2. Unsplash CDN
+    if (hostname.includes('unsplash.com')) {
+      // Must match genuine Unsplash photo identifier pattern (photo-<timestamp>-<hash>)
+      // or /premium_photo-<timestamp>-<hash>
+      const isAuthenticUnsplashPhoto = /\/(photo|premium_photo)-\d{10,}-[a-f0-9]+/i.test(pathname);
+      if (isAuthenticUnsplashPhoto) {
+        return true;
+      }
+      // Or end with authentic image extension if hosted on unsplash
+      return /\.(jpe?g|png|webp|avif)($|\?)/i.test(pathname);
     }
 
-    // Standard image file extensions
-    const hasImageExt = /\.(jpe?g|png|webp|avif|gif|svg)($|\?)/i.test(parsed.pathname);
+    // 3. Other domains: must have an authentic image extension in pathname
+    const hasImageExt = /\.(jpe?g|png|webp|avif|gif|svg)($|\?)/i.test(pathname);
     return hasImageExt;
   } catch {
     return false;

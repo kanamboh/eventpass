@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, Flame } from 'lucide-react';
 import { fetchEvents } from '../services/eventApi';
+import { isEventImageValid } from '../utils/imageFallback';
 import EventCard from './EventCard';
 import EventTabs from './EventTabs';
 
@@ -20,7 +21,8 @@ const FeaturedEvents = () => {
     })
       .then((data) => {
         if (isCancelled) return;
-        setEvents(data.items || []);
+        const validItems = (data.items || []).filter((e) => isEventImageValid(e.imageUrl));
+        setEvents(validItems);
         setLoading(false);
       })
       .catch((err) => {
@@ -88,7 +90,11 @@ const FeaturedEvents = () => {
         ) : events.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {events.map((event) => (
-              <EventCard key={event.id} event={event} />
+              <EventCard
+                key={event.id}
+                event={event}
+                onImageError={(failedId) => setEvents((prev) => prev.filter((e) => e.id !== failedId))}
+              />
             ))}
           </div>
         ) : (

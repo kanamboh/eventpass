@@ -63,6 +63,7 @@ const AdminEventEditPage = () => {
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteModalError, setDeleteModalError] = useState(null);
+  const [deleteModalErrorDetails, setDeleteModalErrorDetails] = useState(null);
 
   // Event form
 
@@ -244,11 +245,13 @@ const AdminEventEditPage = () => {
   const handleExecuteDelete = async () => {
     setDeleteLoading(true);
     setDeleteModalError(null);
+    setDeleteModalErrorDetails(null);
     try {
       await deleteAdminEvent(eventId);
       navigate('/admin/events');
     } catch (err) {
       setDeleteModalError(err.message || 'Failed to permanently delete event.');
+      setDeleteModalErrorDetails(err.details || null);
     } finally {
       setDeleteLoading(false);
     }
@@ -550,6 +553,7 @@ const AdminEventEditPage = () => {
                 setShowDeleteModal(true);
                 setDeleteConfirmText('');
                 setDeleteModalError(null);
+                setDeleteModalErrorDetails(null);
               }}
               className="px-3.5 py-1.5 border border-red-300 text-red-600 hover:bg-red-50 rounded text-xs font-semibold transition-colors flex items-center gap-1.5 shadow-sm"
               title="Permanently Delete Event"
@@ -1159,21 +1163,62 @@ const AdminEventEditPage = () => {
               </div>
 
               {deleteModalError && (
-                <div className="p-3 bg-amber-50 border border-amber-300 rounded-lg text-xs text-amber-900 space-y-1">
-                  <p className="font-semibold">Deletion Blocked:</p>
-                  <p>{deleteModalError}</p>
-                  {deleteModalError.includes('transactions') && (
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        setShowDeleteModal(false);
-                        await handleStatusChange('CANCELLED');
-                      }}
-                      className="mt-1 px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs font-semibold"
-                    >
-                      Cancel Event Instead
-                    </button>
-                  )}
+                <div className="p-3.5 bg-red-50 border border-red-300 rounded-lg text-xs text-red-800 space-y-3">
+                  <div className="flex items-start gap-2.5">
+                    <AlertCircle className="w-4 h-4 flex-shrink-0 text-red-600 mt-0.5" />
+                    <div className="space-y-1">
+                      <strong className="block font-bold text-red-900">Deletion Blocked:</strong>
+                      <p className="leading-relaxed text-red-800">{deleteModalError}</p>
+                    </div>
+                  </div>
+
+                  {/* Safe Alternatives Panel */}
+                  <div className="mt-2 pt-2.5 border-t border-red-200 space-y-2">
+                    <p className="font-bold text-slate-800 text-[11px] uppercase tracking-wider">
+                      Recommended Safe Alternatives:
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {event?.status !== 'CANCELLED' && (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            setShowDeleteModal(false);
+                            await handleStatusChange('CANCELLED');
+                          }}
+                          className="px-2.5 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs font-semibold shadow-sm transition-colors"
+                        >
+                          Cancel Event Instead
+                        </button>
+                      )}
+                      {event?.status === 'PUBLISHED' && (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            setShowDeleteModal(false);
+                            await handleStatusChange('DRAFT');
+                          }}
+                          className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded text-xs font-semibold shadow-sm transition-colors"
+                        >
+                          Unpublish to Draft
+                        </button>
+                      )}
+                      {event?.status !== 'COMPLETED' && (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            setShowDeleteModal(false);
+                            await handleStatusChange('COMPLETED');
+                          }}
+                          className="px-2.5 py-1 bg-slate-700 hover:bg-slate-800 text-white rounded text-xs font-semibold shadow-sm transition-colors"
+                        >
+                          Mark as Completed
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-[10px] text-slate-500 italic">
+                      Safe alternatives preserve historical customer orders, issued tickets, and audit trails for financial compliance.
+                    </p>
+                  </div>
                 </div>
               )}
 

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, X, Loader2 } from 'lucide-react';
 import { fetchEvents } from '../services/eventApi';
-import { FALLBACK_EVENT_IMAGE, handleImageError } from '../utils/imageFallback';
+import { handleImageError, isEventImageValid } from '../utils/imageFallback';
 
 const SearchBar = ({ className = '' }) => {
   const [query, setQuery] = useState('');
@@ -21,9 +21,10 @@ const SearchBar = ({ className = '' }) => {
 
     const timer = setTimeout(() => {
       setIsSearching(true);
-      fetchEvents({ search: trimmed, limit: 4 })
+      fetchEvents({ search: trimmed, limit: 6 })
         .then((data) => {
-          setQuickResults(data.items || []);
+          const valid = (data.items || []).filter((ev) => isEventImageValid(ev.imageUrl));
+          setQuickResults(valid.slice(0, 4));
           setIsSearching(false);
         })
         .catch(() => {
@@ -112,10 +113,13 @@ const SearchBar = ({ className = '' }) => {
                   className="flex items-center gap-3 px-4 py-2 hover:bg-slate-50 cursor-pointer transition-colors"
                 >
                   <img
-                    src={ev.imageUrl || ev.bannerUrl || ev.image || FALLBACK_EVENT_IMAGE}
+                    src={ev.imageUrl || ev.bannerUrl || ev.image}
                     alt={ev.title}
                     className="w-10 h-10 rounded-lg object-cover flex-shrink-0"
-                    onError={handleImageError}
+                    onError={(e) => {
+                      handleImageError(e, ev.id);
+                      setQuickResults((prev) => prev.filter((item) => item.id !== ev.id));
+                    }}
                   />
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-bold text-slate-800 truncate">{ev.title}</p>

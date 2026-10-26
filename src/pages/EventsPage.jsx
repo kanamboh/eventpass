@@ -9,6 +9,7 @@ import {
 import { fetchEvents } from '../services/eventApi';
 import EventCard from '../components/EventCard';
 import { useLikes } from '../context/LikesContext';
+import { isEventImageValid } from '../utils/imageFallback';
 
 // Webtickets Category Tree Data populated with real public events
 const CATEGORY_TREE = [
@@ -163,18 +164,19 @@ const EventsPage = () => {
     })
       .then((data) => {
         if (isCancelled) return;
+        const validItems = (data.items || []).filter((e) => isEventImageValid(e.imageUrl));
         if (filterParam === 'likes') {
           // If viewing favorites, filter by likedEvents ids
-          const liked = (data.items || []).filter(
+          const liked = validItems.filter(
             (e) => likedEvents.includes(e.id) || likedEvents.includes(e.slug)
           );
           setEvents(liked);
           setTotalCount(liked.length);
           setTotalPages(Math.ceil(liked.length / ITEMS_PER_PAGE) || 1);
         } else {
-          setEvents(data.items || []);
-          setTotalCount(data.total || 0);
-          setTotalPages(data.totalPages || 1);
+          setEvents(validItems);
+          setTotalCount(data.total !== undefined ? data.total : validItems.length);
+          setTotalPages(data.totalPages || Math.ceil(validItems.length / ITEMS_PER_PAGE) || 1);
         }
         setLoading(false);
       })
@@ -505,7 +507,13 @@ const EventsPage = () => {
               <>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                   {events.map((event) => (
-                    <EventCard key={event.id} event={event} />
+                    <EventCard
+                      key={event.id}
+                      event={event}
+                      onImageError={(failedId) => {
+                        setEvents((prev) => prev.filter((e) => e.id !== failedId));
+                      }}
+                    />
                   ))}
                 </div>
 

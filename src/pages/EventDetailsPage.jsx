@@ -21,7 +21,7 @@ import {
 import { fetchEventByIdOrSlug } from '../services/eventApi';
 import { useCart } from '../context/CartContext';
 import { useLikes } from '../context/LikesContext';
-import { FALLBACK_EVENT_IMAGE, handleImageError } from '../utils/imageFallback';
+import { FALLBACK_EVENT_IMAGE, handleImageError, isEventImageValid } from '../utils/imageFallback';
 
 const EventDetailsPage = () => {
   const { id } = useParams();
@@ -43,6 +43,11 @@ const EventDetailsPage = () => {
     fetchEventByIdOrSlug(id)
       .then((data) => {
         if (isCancelled) return;
+        if (!data || !isEventImageValid(data.imageUrl || data.bannerUrl || data.image)) {
+          setError('This event is currently unavailable for viewing or booking.');
+          setLoading(false);
+          return;
+        }
         setEvent(data);
         // Initialize quantities for available tiers
         const initialQuantities = {};
@@ -264,10 +269,13 @@ const EventDetailsPage = () => {
             {/* Left Cover Image */}
             <div className="lg:col-span-5 relative aspect-[16/11] lg:aspect-auto bg-slate-900">
               <img
-                src={event.imageUrl || event.bannerUrl || event.image || FALLBACK_EVENT_IMAGE}
+                src={event.imageUrl || event.bannerUrl || event.image}
                 alt={event.title}
                 className="w-full h-full object-cover"
-                onError={handleImageError}
+                onError={(e) => {
+                  handleImageError(e, event.id);
+                  setError('The event poster could not be loaded. This event is temporarily unavailable.');
+                }}
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent lg:hidden"></div>
 

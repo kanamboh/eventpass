@@ -1,12 +1,30 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Heart } from 'lucide-react';
 import { useLikes } from '../context/LikesContext';
-import { FALLBACK_EVENT_IMAGE, handleImageError } from '../utils/imageFallback';
+import { isEventImageValid, handleImageError, isEventImageFailed } from '../utils/imageFallback';
 
-const EventCard = ({ event }) => {
+const EventCard = ({ event, onImageError }) => {
   const { isLiked, toggleLike } = useLikes();
+  const [hasImageError, setHasImageError] = useState(false);
+
+  const rawImage = event?.imageUrl || event?.bannerUrl || event?.image || '';
+  const isImageValid = isEventImageValid(rawImage);
+
+  // If the image is invalid, known placeholder, or previously failed, exclude from customer discovery
+  if (!event || !isImageValid || hasImageError || isEventImageFailed(event.id)) {
+    return null;
+  }
+
   const liked = isLiked(event.id);
+
+  const handleImgLoadError = (e) => {
+    handleImageError(e, event.id);
+    setHasImageError(true);
+    if (typeof onImageError === 'function') {
+      onImageError(event.id);
+    }
+  };
 
   return (
     <div className="group bg-white border border-gray-200 hover:border-gray-300 rounded overflow-hidden flex flex-col transition-all hover:shadow-sm">
@@ -14,11 +32,11 @@ const EventCard = ({ event }) => {
       <div className="relative aspect-[16/10] bg-gray-100 overflow-hidden">
         <Link to={`/events/${event.slug || event.id}`} className="block w-full h-full">
           <img
-            src={event.imageUrl || event.bannerUrl || event.image || FALLBACK_EVENT_IMAGE}
+            src={rawImage}
             alt={event.title}
             className="w-full h-full object-cover group-hover:opacity-95 transition-opacity"
             loading="lazy"
-            onError={handleImageError}
+            onError={handleImgLoadError}
           />
         </Link>
 

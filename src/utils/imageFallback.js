@@ -29,44 +29,129 @@ export const FALLBACK_EVENT_IMAGE = `data:image/svg+xml;utf8,${encodeURIComponen
 `)}`;
 
 /**
- * Image error event handler that safely swaps a broken image src with the fallback SVG.
- * Idempotent: ensures no infinite loop if fallback were ever to trigger onError.
- * 
- * @param {React.SyntheticEvent<HTMLImageElement, Event>} e
+ * Central registry of event IDs whose images failed to load in the current browser session.
+ * Prevents broken images from re-rendering and avoids infinite reload loops.
  */
-export const handleImageError = (e) => {
-  if (e?.currentTarget && e.currentTarget.src !== FALLBACK_EVENT_IMAGE) {
+const failedImageEventIds = new Set();
+const imageFailureListeners = new Set();
+
+export const markEventImageFailed = (eventId) => {
+  if (!eventId) return;
+  if (!failedImageEventIds.has(eventId)) {
+    failedImageEventIds.add(eventId);
+    imageFailureListeners.forEach((listener) => {
+      try {
+        listener(eventId);
+      } catch (err) {
+        console.error('Error in image failure listener:', err);
+      }
+    });
+  }
+};
+
+export const isEventImageFailed = (eventId) => {
+  if (!eventId) return false;
+  return failedImageEventIds.has(eventId);
+};
+
+export const subscribeToImageFailures = (listener) => {
+  imageFailureListeners.add(listener);
+  return () => {
+    imageFailureListeners.delete(listener);
+  };
+};
+
+/**
+ * Image error event handler that marks the event image as failed.
+ * Idempotent: removes onerror to guarantee no infinite reload loop.
+ *
+ * @param {React.SyntheticEvent<HTMLImageElement, Event>} e
+ * @param {string} [eventId]
+ * @param {Function} [onFailed]
+ */
+export const handleImageError = (e, eventId, onFailed) => {
+  if (e?.currentTarget) {
     e.currentTarget.onerror = null;
-    e.currentTarget.src = FALLBACK_EVENT_IMAGE;
+  }
+  if (eventId) {
+    markEventImageFailed(eventId);
+  }
+  if (typeof onFailed === 'function') {
+    onFailed(eventId);
   }
 };
 
 /**
  * Check if an event image string is a genuine, valid image URL.
- * Used for admin alerts and ensuring customers never see missing-image events.
+ * Strictly checks for genuine CDNs, authentic image extensions, and rejects all placeholders.
  */
 export const isEventImageValid = (url) => {
   if (!url || typeof url !== 'string') return false;
   const trimmed = url.trim();
-  if (trimmed.length < 10) return false;
+  if (trimmed.length < 12) return false;
+
   const lower = trimmed.toLowerCase();
-  if (lower.startsWith('data:') || lower.startsWith('blob:') || lower.startsWith('javascript:')) {
-    return false;
-  }
   if (
-    lower.includes('placeholder') ||
-    lower.includes('event photo pending') ||
-    lower.includes('no-image') ||
-    lower.includes('dummyimage') ||
-    lower.includes('via.placeholder')
+    lower.startsWith('data:') ||
+    lower.startsWith('blob:') ||
+    lower.startsWith('javascript:')
   ) {
     return false;
   }
+
+  // Explicit placeholder keywords and mock domains
+  const placeholderPatterns = [
+    'placeholder',
+    'event photo pending',
+    'no-image',
+    'noimage',
+    'dummyimage',
+    'via.placeholder',
+    'example.com',
+    'eventpass-mock',
+    'test-pricing',
+    'photo-symphony',
+    'photo-test',
+    'placeholder.com'
+  ];
+
+  for (const pattern of placeholderPatterns) {
+    if (lower.includes(pattern)) {
+      return false;
+    }
+  }
+
   try {
     const parsed = new URL(trimmed);
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
-    if (parsed.hostname.includes('cloudinary.com') || parsed.hostname.includes('unsplash.com')) return true;
-    return /\.(jpe?g|png|webp|avif|gif|svg)($|\?)/i.test(parsed.pathname);
+
+    const hostname = parsed.hostname.toLowerCase();
+    const pathname = parsed.pathname;
+
+    // 1. Cloudinary assets
+    if (hostname.includes('cloudinary.com')) {
+      if (
+        pathname.includes('/eventpass-mock/') ||
+        pathname.includes('/demo/') ||
+        /\/sample\.(jpe?g|png|webp|avif)/i.test(pathname) ||
+        pathname.includes('/placeholder')
+      ) {
+        return false;
+      }
+      return pathname.length > 8 && pathname.includes('/image/');
+    }
+
+    // 2. Unsplash CDN: must match authentic photo pattern (photo-<timestamp>-<hash>)
+    if (hostname.includes('unsplash.com')) {
+      const isAuthenticUnsplashPhoto = /\/(photo|premium_photo)-\d{10,}-[a-f0-9]+/i.test(pathname);
+      if (isAuthenticUnsplashPhoto) {
+        return true;
+      }
+      return /\.(jpe?g|png|webp|avif)($|\?)/i.test(pathname);
+    }
+
+    // 3. Other domains: must have an authentic image extension
+    return /\.(jpe?g|png|webp|avif|gif|svg)($|\?)/i.test(pathname);
   } catch {
     return false;
   }

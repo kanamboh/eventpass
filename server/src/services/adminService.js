@@ -503,8 +503,8 @@ export const updateAdminEventStatus = async ({ adminUserId, eventId, status }) =
   }
 
   return await prisma.$transaction(async (tx) => {
-    // If cancelling or unpublishing to DRAFT, cancel active reservations and pending orders
-    if (status === 'CANCELLED' || status === 'DRAFT') {
+    // If cancelling, completing, or unpublishing to DRAFT, cancel active uncommitted reservations
+    if (status === 'CANCELLED' || status === 'DRAFT' || status === 'COMPLETED') {
       const tierIds = event.ticketTypes.map((t) => t.id);
       if (tierIds.length > 0) {
         // 1. Cancel all active uncommitted reservations
@@ -565,6 +565,8 @@ export const updateAdminEventStatus = async ({ adminUserId, eventId, status }) =
         ? 'event.unpublished'
         : status === 'CANCELLED'
         ? 'event.cancelled'
+        : status === 'COMPLETED'
+        ? 'event.completed'
         : 'event.status_changed';
 
     await recordAdminAuditLog({
@@ -584,7 +586,8 @@ export const updateAdminEventStatus = async ({ adminUserId, eventId, status }) =
  *
  * Security & Data Safety Rules:
  * - Only ADMIN or SUPER_ADMIN may delete events.
- * - If orders or issued tickets exist for this event: BLOCK deletion and suggest archival/cancellation.
+ * - If orders or issued tickets exist for this event: BLOCK deletion and provide structured dependency explanation.
+ * - If active cart reservations exist: BLOCK deletion and advise unpublishing or cancelling first.
  * - Transactionally delete reservations, promo links, ticket tiers, and event record.
  * - After successful DB transaction, inspect whether event image is used by other events.
  *   If not shared, delete Cloudinary asset. Storage failure never rolls back the DB deletion.
@@ -602,17 +605,83 @@ export const deleteAdminEvent = async ({ adminUserId, eventId }) => {
     throw new AppError('Event not found.', 404, 'EVENT_NOT_FOUND');
   }
 
-  // 1. Dependency checks: Block deletion if orders or issued tickets exist
-  const [orderItemsCount, ticketsCount] = await Promise.all([
-    prisma.orderItem.count({ where: { eventId } }),
-    prisma.ticket.count({ where: { eventId } })
+  const tierIds = (event.ticketTypes || []).map((t) => t.id);
+
+  // 1. Comprehensive Dependency Checks:
+  // Check orders, issued tickets, and active cart reservations
+  const [orderItemsCount, ticketsCount, activeReservationsCount] = await Promise.all([
+    prisma.orderItem.count({
+      where: {
+        OR: [
+          { eventId },
+          ...(tierIds.length > 0 ? [{ ticketTypeId: { in: tierIds } }] : [])
+        ]
+      }
+    }),
+    prisma.ticket.count({
+      where: {
+        OR: [
+          { eventId },
+          ...(tierIds.length > 0 ? [{ ticketTypeId: { in: tierIds } }] : [])
+        ]
+      }
+    }),
+    tierIds.length > 0
+      ? prisma.reservation.count({
+          where: {
+            ticketTypeId: { in: tierIds },
+            status: 'ACTIVE',
+            expiresAt: { gt: new Date() }
+          }
+        })
+      : 0
   ]);
 
   if (orderItemsCount > 0 || ticketsCount > 0) {
+    const dependenciesList = [];
+    if (orderItemsCount > 0) dependenciesList.push(`${orderItemsCount} order item(s)`);
+    if (ticketsCount > 0) dependenciesList.push(`${ticketsCount} issued ticket(s)`);
+    const dependenciesDesc = dependenciesList.join(' and ');
+
     throw new AppError(
-      `Cannot permanently delete event "${event.title}" because it has ${orderItemsCount} order item(s) and ${ticketsCount} issued ticket(s). To protect historical customer records and financial accounting, please cancel or archive the event instead.`,
+      `Cannot permanently delete event "${event.title}" because it has ${dependenciesDesc}. To protect historical customer records and financial accounting, permanent deletion is blocked. Please cancel or archive the event instead.`,
       409,
-      'CANNOT_DELETE_EVENT_WITH_TRANSACTIONS'
+      'CANNOT_DELETE_EVENT_WITH_TRANSACTIONS',
+      {
+        eventId,
+        eventTitle: event.title,
+        currentStatus: event.status,
+        orderItemsCount,
+        ticketsCount,
+        activeReservationsCount,
+        dependencyType: 'HISTORICAL_TRANSACTIONS',
+        suggestedActions: [
+          { action: 'CANCELLED', label: 'Cancel Event', description: 'Mark as CANCELLED (preserves historical records for customer support)' },
+          { action: 'COMPLETED', label: 'Mark as Completed', description: 'Mark as COMPLETED (preserves accounting if event has ended)' },
+          { action: 'DRAFT', label: 'Unpublish to Draft', description: 'Revert to DRAFT (hides from public catalog)' }
+        ]
+      }
+    );
+  }
+
+  if (activeReservationsCount > 0) {
+    throw new AppError(
+      `Cannot permanently delete event "${event.title}" because ${activeReservationsCount} active cart reservation(s) are currently held by customers. Please unpublish or cancel the event first, or wait for active reservations to expire.`,
+      409,
+      'CANNOT_DELETE_EVENT_ACTIVE_RESERVATIONS',
+      {
+        eventId,
+        eventTitle: event.title,
+        currentStatus: event.status,
+        orderItemsCount: 0,
+        ticketsCount: 0,
+        activeReservationsCount,
+        dependencyType: 'ACTIVE_RESERVATIONS',
+        suggestedActions: [
+          { action: 'DRAFT', label: 'Unpublish to Draft', description: 'Revert to DRAFT and safely release cart reservations' },
+          { action: 'CANCELLED', label: 'Cancel Event', description: 'Cancel event and release reservations immediately' }
+        ]
+      }
     );
   }
 
@@ -621,17 +690,30 @@ export const deleteAdminEvent = async ({ adminUserId, eventId }) => {
   // 2. Perform database deletion transactionally
   await prisma.$transaction(async (tx) => {
     // Re-verify counts within transaction for strict concurrency safety
-    const concurrentOrderItems = await tx.orderItem.count({ where: { eventId } });
-    const concurrentTickets = await tx.ticket.count({ where: { eventId } });
+    const concurrentOrderItems = await tx.orderItem.count({
+      where: {
+        OR: [
+          { eventId },
+          ...(tierIds.length > 0 ? [{ ticketTypeId: { in: tierIds } }] : [])
+        ]
+      }
+    });
+    const concurrentTickets = await tx.ticket.count({
+      where: {
+        OR: [
+          { eventId },
+          ...(tierIds.length > 0 ? [{ ticketTypeId: { in: tierIds } }] : [])
+        ]
+      }
+    });
+
     if (concurrentOrderItems > 0 || concurrentTickets > 0) {
       throw new AppError(
-        'Concurrent customer transactions detected. Deletion blocked.',
+        'Concurrent customer transactions detected. Deletion blocked to protect records.',
         409,
         'CANNOT_DELETE_EVENT_WITH_TRANSACTIONS'
       );
     }
-
-    const tierIds = event.ticketTypes.map((t) => t.id);
 
     // Delete active and expired reservations on this event's tiers
     if (tierIds.length > 0) {

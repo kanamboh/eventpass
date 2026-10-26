@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { Upload, Image as ImageIcon, CheckCircle, AlertCircle, Loader2, X, ExternalLink } from 'lucide-react';
 import { uploadAdminEventPoster } from '../../services/adminApi';
-import { FALLBACK_EVENT_IMAGE, handleImageError } from '../../utils/imageFallback';
+import { FALLBACK_EVENT_IMAGE, handleImageError, isEventImageValid } from '../../utils/imageFallback';
 
 /**
  * EventPosterUploader
@@ -195,6 +195,19 @@ export const EventPosterUploader = ({
               <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
               <div className="flex-1">
                 <span className="font-semibold">Upload Notice:</span> {uploadError}
+              </div>
+            </div>
+          )}
+
+          {/* Missing or Invalid Image Warning for Admins */}
+          {(!value || !isEventImageValid(value)) && !uploading && (
+            <div className="p-2.5 bg-amber-50 border border-amber-300 text-amber-900 rounded text-xs flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <span className="font-bold">Missing / Invalid Image Warning:</span>{' '}
+                {!value
+                  ? 'This event has no image. It will remain hidden from customers in the public catalog until a valid image is uploaded.'
+                  : 'The current image URL is recognized as a placeholder, test stub, or invalid format. The event is excluded from customer discovery until a genuine poster is linked.'}
               </div>
             </div>
           )}

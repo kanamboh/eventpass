@@ -109,18 +109,23 @@ const AdminEventsPage = () => {
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteError, setDeleteError] = useState(null);
+  const [deleteErrorDetails, setDeleteErrorDetails] = useState(null);
 
   const handleExecuteDelete = async () => {
     if (!deletingEvent) return;
     setDeleteLoading(true);
     setDeleteError(null);
+    setDeleteErrorDetails(null);
     try {
       await deleteAdminEvent(deletingEvent.id);
       setDeletingEvent(null);
       setDeleteConfirmText('');
+      setDeleteError(null);
+      setDeleteErrorDetails(null);
       await loadEvents(pagination.page);
     } catch (err) {
       setDeleteError(err.message || 'Failed to permanently delete event.');
+      setDeleteErrorDetails(err.details || null);
     } finally {
       setDeleteLoading(false);
     }
@@ -287,9 +292,9 @@ const AdminEventsPage = () => {
                                   /{evt.slug}
                                 </span>
                                 {!isEventImageValid(evt.imageUrl) && (
-                                  <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded" title="Public listing hidden: requires valid poster image">
+                                  <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-300 px-2 py-0.5 rounded-full" title="Event is hidden from customers in public listings because its poster image is missing, placeholder, or invalid.">
                                     <AlertTriangle className="w-3 h-3 text-amber-600" />
-                                    <span>Missing Image</span>
+                                    <span>Missing / Invalid Image</span>
                                   </span>
                                 )}
                               </div>
@@ -421,6 +426,7 @@ const AdminEventsPage = () => {
                                 setDeletingEvent(evt);
                                 setDeleteConfirmText('');
                                 setDeleteError(null);
+                                setDeleteErrorDetails(null);
                               }}
                               disabled={isActionLoading}
                               className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
@@ -509,24 +515,65 @@ const AdminEventsPage = () => {
                 </div>
 
                 {deleteError && (
-                  <div className="p-3 bg-red-50 border border-red-300 rounded text-xs text-red-700 space-y-2">
-                    <div className="flex items-start gap-2">
+                  <div className="p-3.5 bg-red-50 border border-red-300 rounded-lg text-xs text-red-800 space-y-3">
+                    <div className="flex items-start gap-2.5">
                       <AlertCircle className="w-4 h-4 flex-shrink-0 text-red-600 mt-0.5" />
-                      <span>{deleteError}</span>
+                      <div className="space-y-1">
+                        <strong className="block font-bold text-red-900">Deletion Blocked:</strong>
+                        <p className="leading-relaxed text-red-800">{deleteError}</p>
+                      </div>
                     </div>
-                    {deleteError.includes('orders') && deletingEvent.status !== 'CANCELLED' && (
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          const id = deletingEvent.id;
-                          setDeletingEvent(null);
-                          await handleStatusChange(id, 'CANCELLED');
-                        }}
-                        className="mt-1 px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs font-semibold"
-                      >
-                        Cancel Event Instead
-                      </button>
-                    )}
+
+                    {/* Safe Alternatives Panel */}
+                    <div className="mt-2 pt-2.5 border-t border-red-200 space-y-2">
+                      <p className="font-bold text-slate-800 text-[11px] uppercase tracking-wider">
+                        Recommended Safe Alternatives:
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {deletingEvent.status !== 'CANCELLED' && (
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              const id = deletingEvent.id;
+                              setDeletingEvent(null);
+                              await handleStatusChange(id, 'CANCELLED');
+                            }}
+                            className="px-2.5 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs font-semibold shadow-sm transition-colors"
+                          >
+                            Cancel Event Instead
+                          </button>
+                        )}
+                        {deletingEvent.status === 'PUBLISHED' && (
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              const id = deletingEvent.id;
+                              setDeletingEvent(null);
+                              await handleStatusChange(id, 'DRAFT');
+                            }}
+                            className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded text-xs font-semibold shadow-sm transition-colors"
+                          >
+                            Unpublish to Draft
+                          </button>
+                        )}
+                        {deletingEvent.status !== 'COMPLETED' && (
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              const id = deletingEvent.id;
+                              setDeletingEvent(null);
+                              await handleStatusChange(id, 'COMPLETED');
+                            }}
+                            className="px-2.5 py-1 bg-slate-700 hover:bg-slate-800 text-white rounded text-xs font-semibold shadow-sm transition-colors"
+                          >
+                            Mark as Completed
+                          </button>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-slate-500 italic">
+                        Safe alternatives preserve historical customer orders, issued tickets, and audit trails for financial compliance.
+                      </p>
+                    </div>
                   </div>
                 )}
 
